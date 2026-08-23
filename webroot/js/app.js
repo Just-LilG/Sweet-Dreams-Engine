@@ -47,6 +47,7 @@ let _gamesAll = [];
 let _gamesSelected = new Set();
 let _dnsTimer;
 let _touchTimer;
+let _thermalSpoofTimer;
 
 function sdHasBridge() {
   return typeof ksu !== 'undefined' && typeof ksu.exec === 'function';
@@ -348,7 +349,7 @@ async function refreshHome() {
 
   const thermalArmed = rows[6] === 'disabled';
   setOn(document.getElementById('home-tog-thermal'), thermalArmed);
-  txt('home-sub-thermal', thermalArmed ? `Armed · ${rows[7] || 'extreme'}` : 'Off — real sensors');
+  txt('home-sub-thermal', thermalArmed ? `Armed · ${rows[7] === 'extreme' ? 'Advanced' : 'Lite'}` : 'Off — real sensors');
   txt('home-sub-spoof', rows[27] === 'on' ? 'Active — Zygisk + prop hook' : 'Off');
 
   const lastGame = rows[32];
@@ -1203,6 +1204,7 @@ function mod_thermal_toggleThermal() {
   txt('thermal-th-state', armed ? 'Armed' : 'Off');
   const el = document.getElementById('thermal-th-state');
   if (el) el.style.color = armed ? 'var(--ok)' : 'var(--danger)';
+  txt('home-sub-thermal', armed ? 'Armed — in-game only' : 'Off — real sensors');
 }
 window.mod_thermal_toggleThermal = mod_thermal_toggleThermal;
 
@@ -1218,11 +1220,35 @@ function mod_thermal_pickMode(el) {
 }
 window.mod_thermal_pickMode = mod_thermal_pickMode;
 
+function thermalSpoofLabel(c) {
+  const n = Number(c);
+  if (!Number.isFinite(n)) return '—';
+  if (n <= 0) return '0°C — report sensors as freezing';
+  return `${n}°C — OS / games see this`;
+}
+
+function mod_thermal_onSpoofInput(el) {
+  const c = Math.max(0, Math.min(45, parseInt(el.value, 10) || 0));
+  txt('thermal-spoof-c-val', thermalSpoofLabel(c));
+  clearTimeout(_thermalSpoofTimer);
+  _thermalSpoofTimer = setTimeout(() => {
+    write(`${CORTEX}/thermal/spoof_c.txt`, String(c)).then(() => {
+      const armed = isOn(document.getElementById('thermal-tog-th'));
+      const adv = document.querySelector('#thermal-mode-chips .chip.active')?.dataset.mode === 'advanced';
+      if (armed) {
+        se(`sh "${CORTEX}/thermal/apply.sh" game_start ${adv ? 'extreme' : 'lite'}`);
+      }
+    });
+  }, 250);
+}
+window.mod_thermal_onSpoofInput = mod_thermal_onSpoofInput;
+
 async function loadThermal() {
-  const [st, mode, temp] = await batched([
+  const [st, mode, temp, spoof] = await batched([
     `cat "${CORTEX}/thermal/status.txt" 2>/dev/null`,
     `cat "${CORTEX}/thermal/mode.txt" 2>/dev/null`,
     `cat /sys/class/power_supply/battery/temp 2>/dev/null`,
+    `cat "${CORTEX}/thermal/spoof_c.txt" 2>/dev/null`,
   ]);
   const armed = st === 'disabled';
   setOn(document.getElementById('thermal-tog-th'), armed);
@@ -1235,6 +1261,12 @@ async function loadThermal() {
   if (adv) adv.style.display = ui === 'advanced' ? 'block' : 'none';
   const tRaw = parseInt(temp, 10);
   if (Number.isFinite(tRaw)) txt('thermal-real-temp', (tRaw / 10).toFixed(1) + '°C');
+  let c = parseInt(spoof, 10);
+  if (!Number.isFinite(c)) c = 27;
+  c = Math.max(0, Math.min(45, c));
+  const sl = document.getElementById('thermal-spoof-c');
+  if (sl) sl.value = String(c);
+  txt('thermal-spoof-c-val', thermalSpoofLabel(c));
 }
 
 /* ── Spoof ── */

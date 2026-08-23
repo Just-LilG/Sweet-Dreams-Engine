@@ -13,9 +13,21 @@
 #include <ftw.h>
 #include <sys/stat.h>
 
-/* The spoof value written to temp sensors during gaming */
-#define SPOOF_TEMP "25000"   /* 25°C in millidegrees */
+/* Default spoof if cortex/thermal/spoof_c.txt is missing (previous zip used ~27°C). */
+static char spoof_milli[16] = "27000";
 #define RESTORE_SENTINEL "sd_spoofed"
+
+static void load_spoof_milli(void) {
+    char buf[16];
+    read_config(CORTEX "/thermal/spoof_c.txt", buf, sizeof(buf), "27");
+    int c = 0;
+    for (char *p = buf; *p; p++) {
+        if (*p >= '0' && *p <= '9') c = c * 10 + (*p - '0');
+    }
+    if (c < 0) c = 0;
+    if (c > 45) c = 45;
+    snprintf(spoof_milli, sizeof(spoof_milli), "%d", c * 1000);
+}
 
 /* ── nftw callback: chmod + write spoof temp to thermal zone files ────────── */
 static int spoof_visitor(const char *path, const struct stat *sb,
@@ -31,7 +43,7 @@ static int spoof_visitor(const char *path, const struct stat *sb,
 
     /* Write spoof temp to temp nodes */
     if (strncmp(base, "temp", 4) == 0 || strcmp(base, "temperature") == 0)
-        write_node(path, SPOOF_TEMP);
+        write_node(path, spoof_milli);
 
     /* Disable throttling trip points by setting them very high */
     if (strncmp(base, "trip_point_", 11) == 0 &&
@@ -51,6 +63,7 @@ static int restore_visitor(const char *path, const struct stat *sb,
 }
 
 static void spoof_thermal_trees(void) {
+    load_spoof_milli();
     /* Walk all known MTK thermal sysfs trees in one pass each */
     static const char *dirs[] = {
         "/sys/class/thermal",
@@ -73,7 +86,7 @@ static void spoof_thermal_trees(void) {
     write_node("/proc/driver/thermal/tm_pid",           "0");
 
     write_config(CORTEX "/thermal/status.txt", "spoofed");
-    log_msg("THERMAL", "Thermal bypass active — sensors spoofed to 25°C");
+    log_msg("THERMAL", "Thermal bypass active — sensors spoofed");
 }
 
 static void restore_thermal(void) {

@@ -103,11 +103,16 @@ echo "0"   > /dev/stune/top-app/schedtune.boost       2>/dev/null
 echo "0"   > /dev/stune/top-app/schedtune.prefer_idle 2>/dev/null
 
 # -- Re-enable system thermal engine ------------------------------------------
-# Unmount any fake-27°C bind mounts FIRST - if the module is removed while
-# gaming, the fake-temp mounts may still be active. Lazy umount (-l) ensures
+# Unmount any fake-temp bind mounts FIRST - if the module is removed while
+# gaming, the spoof mounts may still be active. Lazy umount (-l) ensures
 # the unmount goes through even if a process is actively reading the node.
-for tz in /sys/class/thermal/thermal_zone*/temp; do
-    mount | grep -qF " on $tz " && umount -l "$tz" 2>/dev/null
+if [ -f /data/adb/modules/sweet_dreams/cortex/thermal/mounted.list ]; then
+    while IFS= read -r t; do
+        [ -n "$t" ] && umount -l "$t" 2>/dev/null
+    done < /data/adb/modules/sweet_dreams/cortex/thermal/mounted.list
+fi
+for tz in /sys/class/thermal/thermal_zone*/temp /sys/class/power_supply/*/temp; do
+    grep -qF " $tz " /proc/mounts 2>/dev/null && umount -l "$tz" 2>/dev/null
 done
 # Re-enable every thermal zone mode + policy node
 for tz in /sys/class/thermal/thermal_zone*/mode; do
