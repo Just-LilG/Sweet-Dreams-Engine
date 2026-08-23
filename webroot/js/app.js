@@ -32,6 +32,13 @@ const CPU_PROFILES = [
   { key: 'dimensity9400plus', name: 'MediaTek Dimensity 9400+' },
   { key: 'dimensity8350', name: 'MediaTek Dimensity 8350' },
   { key: '9000', name: 'HiSilicon Kirin 9000' },
+  { key: '9000s', name: 'HiSilicon Kirin 9000S' },
+  { key: '9020', name: 'HiSilicon Kirin 9020' },
+  { key: '9020a', name: 'HiSilicon Kirin 9020A' },
+  { key: '9030pro', name: 'HiSilicon Kirin 9030 Pro' },
+  { key: '9030s', name: 'HiSilicon Kirin 9030S' },
+  { key: 'xuanjie_o1', name: 'Xiaomi Xring O1' },
+  { key: 'xuanjie_o3', name: 'Xiaomi Xring O3' },
 ];
 
 let _toastTimer;
@@ -214,6 +221,7 @@ function loadPanel(key) {
     bypass: loadBypass,
     thermal: loadThermal,
     devicespoof: loadSpoof,
+    settings: loadSettings,
   };
   const fn = loaders[key];
   if (fn) fn();
@@ -463,6 +471,8 @@ async function applyAll() {
     `sh "${CORTEX}/display/apply.sh"`,
     `sh "${CORTEX}/ram/apply.sh"`,
     `sh "${CORTEX}/battery/apply.sh"`,
+    `sh "${CORTEX}/games/build_spoof_json.sh"`,
+    `sh "${CORTEX}/games/spoof.sh"`,
   ].join(' ; '), '', 45000);
   const fps = await se(`cat "${CORTEX}/display/fps.txt"`, '90');
   await se(`sh "${CORTEX}/fps/engine.sh" "${fps}" 2>/dev/null`);
@@ -474,18 +484,49 @@ window.applyAll = applyAll;
 
 /* ── CPU ── */
 async function loadCpu() {
-  const [profile, a55, a76] = await batched([
+  const [profile, a55, a76, govLive, lMin, lMax, lCur, bMin, bMax, bCur, abi] = await batched([
     `cat "${CORTEX}/cpu/profile.txt" 2>/dev/null`,
     `cat "${CORTEX}/cpu/a55_max_khz.txt" 2>/dev/null`,
     `cat "${CORTEX}/cpu/a76_max_khz.txt" 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu6/cpufreq/cpuinfo_min_freq 2>/dev/null || cat /sys/devices/system/cpu/cpu4/cpufreq/cpuinfo_min_freq 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu6/cpufreq/cpuinfo_max_freq 2>/dev/null || cat /sys/devices/system/cpu/cpu4/cpufreq/cpuinfo_max_freq 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_cur_freq 2>/dev/null || cat /sys/devices/system/cpu/cpu4/cpufreq/scaling_cur_freq 2>/dev/null`,
+    `getprop ro.product.cpu.abi 2>/dev/null`,
   ]);
   const gov = profile === 'gaming' ? 'performance' : profile === 'battery' ? 'powersave' : 'schedutil';
   document.querySelectorAll('#cpu-profile-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.gov === gov));
-  txt('cpu-active-gov', gov);
+  txt('cpu-active-gov', govLive || gov);
+  const mhz = (v) => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n > 0 ? (n / 1000).toFixed(0) : null;
+  };
+  const lMinM = mhz(lMin), lMaxM = mhz(lMax), lCurM = mhz(lCur);
+  const bMinM = mhz(bMin), bMaxM = mhz(bMax), bCurM = mhz(bCur);
+  txt('cpu-little-min', lMinM ? `Min ${lMinM} MHz` : 'Min —');
+  txt('cpu-little-max', lMaxM ? `Max ${lMaxM} MHz` : 'Max —');
+  txt('cpu-little-cur', lCurM ? `Current: ${lCurM} MHz` : 'Current: —');
+  txt('cpu-big-min', bMinM ? `Min ${bMinM} MHz` : 'Min —');
+  txt('cpu-big-max', bMaxM ? `Max ${bMaxM} MHz` : 'Max —');
+  txt('cpu-big-cur', bCurM ? `Current: ${bCurM} MHz` : 'Current: —');
+  const lBar = document.getElementById('cpu-little-bar');
+  const bBar = document.getElementById('cpu-big-bar');
+  if (lBar && lCurM && lMaxM) lBar.style.width = Math.min(100, Math.round((lCurM / lMaxM) * 100)) + '%';
+  if (bBar && bCurM && bMaxM) bBar.style.width = Math.min(100, Math.round((bCurM / bMaxM) * 100)) + '%';
   const s0 = document.getElementById('cpu-policy0-max');
   const s1 = document.getElementById('cpu-policy1-max');
-  if (s0 && a55) s0.value = String(Math.round(parseInt(a55, 10) / 1000) || s0.value);
-  if (s1 && a76) s1.value = String(Math.round(parseInt(a76, 10) / 1000) || s1.value);
+  if (s0) {
+    if (lMaxM) { s0.max = String(lMaxM); s0.min = String(lMinM || 200); }
+    s0.value = a55 ? String(Math.round(parseInt(a55, 10) / 1000)) : String(lMaxM || s0.value);
+  }
+  if (s1) {
+    if (bMaxM) { s1.max = String(bMaxM); s1.min = String(bMinM || 400); }
+    s1.value = a76 ? String(Math.round(parseInt(a76, 10) / 1000)) : String(bMaxM || s1.value);
+  }
+  txt('cpu-chip-sub', abi ? `${abi} · live cluster ceilings` : 'Live cluster ceilings');
 }
 
 document.addEventListener('click', (e) => {
@@ -549,6 +590,7 @@ async function loadGpu() {
   if (opt) mod_gpu_pickRender(opt);
   const archName = (arch || '').split(/\n/).map((s) => s.trim()).filter(Boolean)[0] || 'Unknown GPU';
   txt('gpu-arch', archName);
+  txt('gpu-chip-sub', archName);
   txt('gpu-vk', vk || '—');
   txt('gpu-gov', gov || '—');
   const curMhz = parseInt(cur, 10);
@@ -654,6 +696,7 @@ async function loadStorage() {
     const avail = (parseInt(p[3], 10) / 1024 / 1024).toFixed(1);
     const pct = parseInt(p[4], 10) || 0;
     txt('storage-storage-txt', `${used} / ${total} GB`);
+    txt('storage-free-badge', `${avail} GB free`);
     const bar = document.getElementById('storage-storage-bar');
     if (bar) bar.style.width = pct + '%';
     txt('home-sub-storage', `${p[4]} used · ${avail} GB free`);
@@ -711,6 +754,13 @@ window.mod_battery_toggleBatt = mod_battery_toggleBatt;
 function mod_battery_setLimit(el) {
   document.querySelectorAll('#battery-pct-chips .chip').forEach((c) => c.classList.remove('active'));
   el.classList.add('active');
+  const info = {
+    '60': 'Most conservative — maximizes long-term battery lifespan, shorter runtime per charge.',
+    '70': 'A good balance for most people who charge overnight.',
+    '80': 'Stopping at 80% is the sweet spot most manufacturers recommend for long-term battery health.',
+    '90': 'Closer to a full charge with only a small lifespan trade-off.',
+  };
+  txt('battery-pct-info', info[el.dataset.pct] || '');
 }
 window.mod_battery_setLimit = mod_battery_setLimit;
 
@@ -721,7 +771,11 @@ async function loadBattery() {
     `cat /sys/class/power_supply/battery/capacity 2>/dev/null`,
   ]);
   setOn(document.getElementById('battery-tog-batt'), en === 'on');
+  const cfg = document.getElementById('battery-batt-config');
+  if (cfg) cfg.classList.toggle('open', en === 'on');
   document.querySelectorAll('#battery-pct-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.pct === (pct || '80')));
+  const active = document.querySelector('#battery-pct-chips .chip.active');
+  if (active) mod_battery_setLimit(active);
   txt('battery-batt-pct', (cap || '—') + '%');
 }
 
@@ -765,6 +819,16 @@ function mod_network_setDns(el) {
 }
 window.mod_network_setDns = mod_network_setDns;
 
+function mod_network_setDnsPreset(el) {
+  const [d1, d2] = (el.dataset.preset || '').split('|');
+  const i1 = document.getElementById('network-dns1');
+  const i2 = document.getElementById('network-dns2');
+  if (i1 && d1) i1.value = d1;
+  if (i2 && d2) i2.value = d2;
+  document.querySelectorAll('#network-dns-config .chip[data-preset]').forEach((c) => c.classList.toggle('active', c === el));
+}
+window.mod_network_setDnsPreset = mod_network_setDnsPreset;
+
 function togglePingStab(el) {
   if (!el) el = document.getElementById('network-tog-pingstab');
   el.classList.toggle('on');
@@ -793,6 +857,7 @@ async function loadNet() {
   if (i1) i1.value = d1 || '1.1.1.1';
   if (i2) i2.value = d2 || '1.0.0.1';
   setOn(document.getElementById('network-tog-pingstab'), ping === 'on');
+  txt('network-live-cc', (cc || 'bbr').toUpperCase());
 }
 
 document.addEventListener('click', (e) => {
@@ -808,6 +873,7 @@ document.addEventListener('click', (e) => {
     btn.textContent = 'Applied ✓';
     setTimeout(() => { btn.textContent = 'Apply Network Settings'; }, 1600);
     toast('Network: ' + cc);
+    txt('network-live-cc', cc.toUpperCase());
   });
 });
 
@@ -1123,6 +1189,7 @@ async function loadEngine() {
   txt('engine-stat-ram', p[2] ? p[2] + ' MB' : '—');
   txt('engine-stat-gov', p[3] || '—');
   txt('engine-stat-profile', p[4] || '—');
+  txt('engine-eng-temp', p[0] ? p[0] + '°C' : '—');
   const banner = document.getElementById('engine-override-banner');
   if (banner) banner.style.display = ov === 'on' ? 'block' : 'none';
 }
@@ -1162,6 +1229,10 @@ async function loadThermal() {
   txt('thermal-th-state', armed ? 'Armed' : 'Off');
   const ui = mode === 'extreme' ? 'advanced' : 'lite';
   document.querySelectorAll('#thermal-mode-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.mode === ui));
+  const lite = document.getElementById('thermal-lite-info');
+  const adv = document.getElementById('thermal-advanced-info');
+  if (lite) lite.style.display = ui === 'advanced' ? 'none' : 'block';
+  if (adv) adv.style.display = ui === 'advanced' ? 'block' : 'none';
   const tRaw = parseInt(temp, 10);
   if (Number.isFinite(tRaw)) txt('thermal-real-temp', (tRaw / 10).toFixed(1) + '°C');
 }
@@ -1188,11 +1259,51 @@ function mod_devicespoof_toggleMaster() {
 }
 window.mod_devicespoof_toggleMaster = mod_devicespoof_toggleMaster;
 
+function parseSpoofLine(line) {
+  const [left, device] = line.split('|');
+  if (!left) return null;
+  const [pkg, ...tags] = left.split(':');
+  const cpuTag = tags.find((t) => t.startsWith('cpu=') || t === 'with_cpu');
+  return {
+    pkg: pkg.trim(),
+    device: (device || 'off').trim(),
+    cpu: !!cpuTag,
+    cpuKey: cpuTag && cpuTag.startsWith('cpu=') ? cpuTag.slice(4) : 'sd8elite',
+  };
+}
+
+function renderSpoofDetails(deviceId) {
+  const d = SPOOF_DEVICES.find((x) => x.id === deviceId);
+  const box = document.getElementById('devicespoof-device-details');
+  if (!box) return;
+  if (!d || d.id === 'off') {
+    box.innerHTML = '<div style="font-size:11px;color:rgba(255,255,255,.6);line-height:1.6;">No spoof — this game keeps its real device identity.</div>';
+    return;
+  }
+  box.innerHTML = `<div style="font-size:12px;font-weight:700;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:rgba(255,255,255,.6);line-height:1.6;">${d.desc}</div>`;
+}
+
+function applySpoofRowToUi(row) {
+  const sel = document.getElementById('devicespoof-device-select');
+  const cpuTog = document.getElementById('devicespoof-tog-cpu');
+  const cpuSel = document.getElementById('devicespoof-cpu-select');
+  const picker = document.getElementById('devicespoof-cpu-picker');
+  if (sel) sel.value = row?.device || 'off';
+  setOn(cpuTog, !!(row && row.cpu));
+  if (cpuSel && row?.cpuKey) cpuSel.value = row.cpuKey;
+  if (picker) picker.style.display = row && row.cpu ? 'block' : 'none';
+  renderSpoofDetails(row?.device || 'off');
+}
+
 function mod_devicespoof_pickGame(el) {
   document.querySelectorAll('#devicespoof-game-chips .chip').forEach((c) => c.classList.remove('active'));
   el.classList.add('active');
   _spoofPkg = el.dataset.pkg || '';
   txt('devicespoof-selected-game-name', el.textContent.trim());
+  se(`cat "${CORTEX}/games/spoof_assignments.txt" 2>/dev/null`, '').then((raw) => {
+    const row = raw.split(/\n/).map(parseSpoofLine).find((r) => r && r.pkg === _spoofPkg);
+    applySpoofRowToUi(row);
+  });
 }
 window.mod_devicespoof_pickGame = mod_devicespoof_pickGame;
 
@@ -1201,6 +1312,15 @@ function mod_devicespoof_toggleCpu() {
   t.classList.toggle('on');
   const picker = document.getElementById('devicespoof-cpu-picker');
   if (picker) picker.style.display = isOn(t) ? 'block' : 'none';
+  if (!_spoofPkg) return;
+  const deviceId = document.getElementById('devicespoof-device-select')?.value || 'off';
+  if (isOn(t) && deviceId === 'off') {
+    toast('Pick a spoof device first — CPU spoof needs one to attach to');
+    t.classList.remove('on');
+    if (picker) picker.style.display = 'none';
+    return;
+  }
+  saveSpoofAssignment();
 }
 window.mod_devicespoof_toggleCpu = mod_devicespoof_toggleCpu;
 
@@ -1213,6 +1333,8 @@ async function loadSpoof() {
   const on = master === 'on';
   setOn(document.getElementById('devicespoof-tog-master'), on);
   txt('devicespoof-spoof-state', on ? 'Active' : 'Off');
+  const stateEl = document.getElementById('devicespoof-spoof-state');
+  if (stateEl) stateEl.style.color = on ? 'var(--ok)' : 'var(--danger)';
   const cfg = document.getElementById('devicespoof-config-section');
   if (cfg) {
     cfg.style.opacity = on ? '1' : '.4';
@@ -1233,30 +1355,36 @@ async function loadSpoof() {
   if (sel && !sel.dataset.wired) {
     sel.innerHTML = SPOOF_DEVICES.map((d) => `<option value="${d.id}">${d.name}</option>`).join('');
     sel.dataset.wired = '1';
-    sel.addEventListener('change', assignSpoofFromSelect);
+    sel.addEventListener('change', saveSpoofAssignment);
   }
-  const map = {};
-  (assigns || '').split(/\n/).forEach((line) => {
-    const [pkg, dev] = line.split('|');
-    if (pkg && dev) map[pkg.trim()] = dev.trim();
-  });
-  if (sel && _spoofPkg && map[_spoofPkg]) sel.value = map[_spoofPkg];
-
-  const cpuSel = document.querySelector('#devicespoof-cpu-picker select');
+  const cpuSel = document.getElementById('devicespoof-cpu-select');
   if (cpuSel && !cpuSel.dataset.wired) {
     cpuSel.innerHTML = CPU_PROFILES.map((p) => `<option value="${p.key}">${p.name}</option>`).join('');
     cpuSel.dataset.wired = '1';
+    cpuSel.addEventListener('change', saveSpoofAssignment);
   }
+  const rows = (assigns || '').split(/\n/).map(parseSpoofLine).filter(Boolean);
+  const cur = rows.find((r) => r.pkg === _spoofPkg);
+  applySpoofRowToUi(cur);
 }
 
-async function assignSpoofFromSelect() {
+async function saveSpoofAssignment() {
   if (!_spoofPkg) return;
   const deviceId = document.getElementById('devicespoof-device-select')?.value || 'off';
+  const cpuOn = isOn(document.getElementById('devicespoof-tog-cpu'));
+  const cpuKey = document.getElementById('devicespoof-cpu-select')?.value || 'sd8elite';
   const raw = await se(`cat "${CORTEX}/games/spoof_assignments.txt" 2>/dev/null`, '');
-  const lines = raw.split(/\n/).filter((l) => l.trim() && !l.startsWith(_spoofPkg + '|'));
-  if (deviceId !== 'off') lines.push(_spoofPkg + '|' + deviceId);
+  const lines = raw.split(/\n/).filter((l) => {
+    const linePkg = l.split(/[:|]/)[0];
+    return l.trim() && linePkg !== _spoofPkg;
+  });
+  if (deviceId !== 'off') {
+    const tag = cpuOn ? `:cpu=${cpuKey}` : '';
+    lines.push(_spoofPkg + tag + '|' + deviceId);
+  }
   await writeLines(`${CORTEX}/games/spoof_assignments.txt`, lines);
-  await se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"`);
+  renderSpoofDetails(deviceId);
+  se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"`);
   toast(deviceId === 'off' ? 'Spoof removed' : `${_spoofPkg.split('.').pop()} → ${deviceId}`);
 }
 
@@ -1352,6 +1480,32 @@ async function mod_logs_clear() {
   txt('logs-term', '(cleared)');
 }
 window.mod_logs_clear = mod_logs_clear;
+
+async function mod_logs_restart() {
+  toast('Restarting daemons…');
+  await se(`
+OLD_AI=$(cat "${MOD}/run/ai_engine.pid" 2>/dev/null)
+[ -n "$OLD_AI" ] && kill "$OLD_AI" 2>/dev/null
+pkill -f "${CORTEX}/ai/engine.sh" 2>/dev/null
+mkdir -p "${MOD}/run"
+sleep 1
+nohup sh "${CORTEX}/ai/engine.sh" >> "${MOD}/boot.log" 2>&1 &
+OLD=$(cat "${MOD}/run/game_monitor.pid" 2>/dev/null)
+[ -n "$OLD" ] && kill "$OLD" 2>/dev/null
+sleep 1
+nohup sh "${CORTEX}/daemons/game_monitor.sh" >> "${MOD}/boot.log" 2>&1 &
+SPOOF_ON=$(cat "${CORTEX}/games/spoof_master.txt" 2>/dev/null || echo off)
+if [ "$SPOOF_ON" = "on" ]; then
+  pkill -f "${MOD}/controller" 2>/dev/null
+  sleep 1
+  nohup "${MOD}/controller" >/dev/null 2>&1 &
+fi
+echo "[$(date '+%H:%M:%S')] Daemons restarted from WebUI" >> "${MOD}/boot.log"
+`, '', 20000);
+  toast('Daemons restarted');
+  setTimeout(() => mod_logs_refresh(), 1500);
+}
+window.mod_logs_restart = mod_logs_restart;
 
 /* ── Health / compat / conflicts ── */
 function rowHtml(title, sub, tag, ok) {
@@ -1508,6 +1662,8 @@ async function loadBypass() {
     if (box) box.innerHTML = '<div style="font-size:12px;color:var(--ok);">Previously detected node is saved.</div>';
   }
   const tog = document.getElementById('bypass-tog-bypass');
+  const st = await se(`cat "${CORTEX}/battery/bypass_state.txt" 2>/dev/null`, 'off');
+  setOn(tog, st === 'on');
   if (tog && !tog.dataset.wired) {
     tog.dataset.wired = '1';
     tog.addEventListener('click', () => {
@@ -1516,6 +1672,87 @@ async function loadBypass() {
       toast('Bypass: ' + (isOn(tog) ? 'on' : 'off'));
     });
   }
+}
+
+/* ── Settings extras (schedule / smart charge / spoof rotate) ── */
+function toggleAutoSchedule(el) {
+  el.classList.toggle('on');
+  write(`${CORTEX}/ai/schedule_enabled.txt`, isOn(el) ? 'on' : 'off');
+  toast('Auto schedule: ' + (isOn(el) ? 'on' : 'off'));
+}
+window.toggleAutoSchedule = toggleAutoSchedule;
+
+function toggleSmartCharge(el) {
+  el.classList.toggle('on');
+  write(`${CORTEX}/battery/smart_charge_enabled.txt`, isOn(el) ? 'on' : 'off');
+  toast('Smart charge: ' + (isOn(el) ? 'on' : 'off'));
+}
+window.toggleSmartCharge = toggleSmartCharge;
+
+function toggleSpoofRotate(el) {
+  el.classList.toggle('on');
+  write(`${CORTEX}/games/spoof_rotate.txt`, isOn(el) ? 'on' : 'off');
+  toast('Spoof rotation: ' + (isOn(el) ? 'on' : 'off'));
+}
+window.toggleSpoofRotate = toggleSpoofRotate;
+
+async function promptScheduleVal(key) {
+  const files = {
+    night: `${CORTEX}/ai/schedule_night_hour.txt`,
+    morning: `${CORTEX}/ai/schedule_morning_hour.txt`,
+    bat: `${CORTEX}/ai/schedule_low_bat_pct.txt`,
+  };
+  const ids = { night: 'settings-sched-night', morning: 'settings-sched-morning', bat: 'settings-sched-bat' };
+  const fmt = (k, n) => (k === 'bat' ? `${n}%` : `${n}:00`);
+  const cur = await se(`cat "${files[key]}" 2>/dev/null`, key === 'bat' ? '15' : (key === 'night' ? '23' : '7'));
+  const raw = window.prompt(key === 'bat' ? 'Low battery threshold (1–50)' : 'Hour (0–23)', cur);
+  if (raw === null || raw === '') return;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) { toast('Enter a number'); return; }
+  const max = key === 'bat' ? 50 : 23;
+  const min = key === 'bat' ? 1 : 0;
+  const clamped = Math.max(min, Math.min(max, n));
+  await write(files[key], String(clamped));
+  txt(ids[key], fmt(key, clamped));
+}
+window.promptScheduleVal = promptScheduleVal;
+
+async function promptSmartCharge(key) {
+  const files = {
+    trickle: `${CORTEX}/battery/smart_charge_trickle.txt`,
+    hour: `${CORTEX}/battery/smart_charge_full_hour.txt`,
+  };
+  const ids = { trickle: 'settings-smart-trickle', hour: 'settings-smart-hour' };
+  const cur = await se(`cat "${files[key]}" 2>/dev/null`, key === 'trickle' ? '80' : '7');
+  const raw = window.prompt(key === 'trickle' ? 'Trickle percent (50–95)' : 'Full-charge hour (0–23)', cur);
+  if (raw === null || raw === '') return;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) { toast('Enter a number'); return; }
+  const clamped = key === 'trickle' ? Math.max(50, Math.min(95, n)) : Math.max(0, Math.min(23, n));
+  await write(files[key], String(clamped));
+  txt(ids[key], key === 'trickle' ? `${clamped}%` : `${clamped}:00`);
+}
+window.promptSmartCharge = promptSmartCharge;
+
+async function loadSettings() {
+  const [sched, night, morning, bat, smart, trickle, hour, rotate] = await batched([
+    `cat "${CORTEX}/ai/schedule_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/schedule_night_hour.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/schedule_morning_hour.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/schedule_low_bat_pct.txt" 2>/dev/null`,
+    `cat "${CORTEX}/battery/smart_charge_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/battery/smart_charge_trickle.txt" 2>/dev/null`,
+    `cat "${CORTEX}/battery/smart_charge_full_hour.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/spoof_rotate.txt" 2>/dev/null`,
+  ]);
+  setOn(document.getElementById('settings-tog-sched'), sched === 'on');
+  setOn(document.getElementById('settings-tog-smartchg'), smart === 'on');
+  setOn(document.getElementById('settings-tog-rotate'), rotate === 'on');
+  txt('settings-sched-night', `${night || '23'}:00`);
+  txt('settings-sched-morning', `${morning || '7'}:00`);
+  txt('settings-sched-bat', `${bat || '15'}%`);
+  txt('settings-smart-trickle', `${trickle || '80'}%`);
+  txt('settings-smart-hour', `${hour || '7'}:00`);
 }
 
 window.addEventListener('popstate', (e) => {
@@ -1527,6 +1764,9 @@ window.addEventListener('popstate', (e) => {
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    if (typeof ksu !== 'undefined' && typeof ksu.fullScreen === 'function') ksu.fullScreen(true);
+  } catch (e) {}
   const saved = await se(`cat "${CORTEX}/settings/theme.txt" 2>/dev/null`, '');
   const theme = saved || document.documentElement.getAttribute('data-theme') || 'lavender';
   setTheme(theme);
