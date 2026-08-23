@@ -879,7 +879,9 @@ body{font-family:var(--font-body);color:#fff;}
 .screen-thermal .risk-body {font-size:11px;color:rgba(255,255,255,.75);line-height:1.6;}
 .screen-thermal .advanced-lock {display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.25);border-radius:var(--radius-md);font-size:12px;font-weight:700;color:rgba(255,255,255,.6);cursor:pointer;}
 .screen-thermal .real-temp-pin {position:sticky;top:0;z-index:5;background:rgba(var(--bg-base-1-rgb),.92);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.16);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
+.screen-thermal input[type=range] {-webkit-appearance:none;width:100%;height:4px;background:rgba(255,255,255,.2);border-radius:2px;outline:none;margin-top:6px;}
 .screen-thermal input[type=range]::-webkit-slider-thumb {-webkit-appearance:none;width:18px;height:18px;background:var(--danger);border-radius:50%;cursor:pointer;}
+.screen-thermal .slider-val {font-size:12px;font-weight:700;margin-top:8px;}
 .screen-devicespoof .stage {max-width:480px;margin:0 auto;padding:20px;}
 .screen-devicespoof .back {background:rgba(255,255,255,.14);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.2);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
 .screen-devicespoof .top {display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
@@ -2134,14 +2136,18 @@ body{font-family:var(--font-body);color:#fff;}
   </div>
 
   <div id="thermal-lite-info" class="stat-box" style="margin-top:14px;">
-    <div style="font-size:12px;color:rgba(255,255,255,.65);line-height:1.6;">Reduces throttle sensitivity only — no sensor override. Lower risk, smaller effect.</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.65);line-height:1.6;">Lite still uses the previous thermal engine, but only on CPU/GPU/board zones: vendor thermal daemons are stopped and those zones report the spoof temperature. Battery, IIO, I2C, and hwmon stay real. Lower coverage, lower risk.</div>
   </div>
 
   <div id="thermal-advanced-info" style="display:none;margin-top:14px;">
     <div class="risk-band" style="margin-bottom:12px;">
-      <div class="risk-title">⚠ Full sensor blackout</div>
-      <div class="risk-body">Advanced maps to cortex thermal mode <b>extreme</b>: chmod 000 on every temp sysfs bus (zones, battery, IIO, I2C, hwmon) while a selected game is running. There is no fake numeric reading — nodes become unreadable, so the OS cannot throttle and also cannot protect the hardware. Lite only blinds the throttle-causing thermal zones.</div>
+      <div class="risk-title">⚠ Sensor spoof — OS sees a fake temperature</div>
+      <div class="risk-body">Advanced uses the same bind-mount engine as the previous public release, across every temp bus (zones, battery, IIO, I2C, hwmon). Userspace reads the value you set below instead of the real sensor. That also means Android’s overheat protection is looking at a lie during sustained load. Real damage is possible. Use only if you accept this.</div>
     </div>
+    <div class="section-title">Spoof temperature</div>
+    <div style="font-size:11px;color:rgba(255,255,255,.55);margin-bottom:8px;line-height:1.5;">Value reported to the OS while a selected game is running. Previous release was fixed at 27°C.</div>
+    <input type="range" min="0" max="45" step="1" value="27" id="thermal-spoof-c" oninput="mod_thermal_onSpoofInput(this)">
+    <div class="slider-val" id="thermal-spoof-c-val" style="color:var(--danger);">27°C — OS / games see this</div>
   </div>
 </div>
 <style>

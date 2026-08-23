@@ -2,7 +2,7 @@
 
 MediaTek FPS unlocker and thermal bypass engine for KernelSU / Magisk.
 
-**Version:** v2.5.38-skipmount  
+**Version:** v2.5.39-skipmount  
 **Author:** Lil G Tech Labs
 
 ## Features
