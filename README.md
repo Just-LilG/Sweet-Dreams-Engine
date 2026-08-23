@@ -2,7 +2,7 @@
 
 MediaTek FPS unlocker and thermal bypass engine for KernelSU / Magisk.
 
-**Version:** v2.5.40  
+**Version:** v2.5.41  
 **Author:** Lil G Tech Labs
 
 ## Features
@@ -13,7 +13,8 @@ MediaTek FPS unlocker and thermal bypass engine for KernelSU / Magisk.
 - RAM / ZRAM modes, kill-background, game preload
 - Battery charge limiter and optional bypass charging
 - Touch report-rate / booster, network BBR + DNS, ping stabilizer
-- Thermal spoof armed at rest (`armed.txt`), applied in-game only via bind-mount fake °C (lite / advanced). Not a boot-time sensor blackout.
+- Thermal spoof (Lite / Advanced / Extreme) via bind-mount fake °C. Extreme applies when armed; Lite/Advanced apply in-game. Not a boot-time sensor blackout.
+- WebUI settings persist under `/data/adb/sweet_dreams_persist` across zip updates.
 - Per-game device identity spoof (Zygisk + prop hook)
 - Health / capability / conflict probes
 - KernelSU / MMRL WebUI (lavender / vanilla glass)
