@@ -2,6 +2,26 @@
 
 ## GitHub
 
+- **v2.5.40-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.40-skipmount/SweetDreams-v2_5_40-skipmount.zip)
+- **v2.5.39-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.39-skipmount/SweetDreams-v2_5_39-skipmount.zip)
+- **v2.5.38-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.38-skipmount/SweetDreams-v2_5_38-skipmount.zip)
+
+## v2.5.40-skipmount
+
+- Health WebUI reads `cortex/health/*.status` (the files apply scripts actually write).
+- Thermal language: `armed.txt` (`armed`/`off`) with `status.txt` still written for older scripts.
+- Games tab: launcher labels, icons when extractable, name search; likely-game filter instead of every user app.
+- Thermal apply writes `last_verify.txt` (OS-seen zone temps vs spoof °C) and `APPLY_RESULT`.
+- Optional per-game spoof °C (`cortex/games/<pkg>.spoof_c`) via session file.
+- `game_monitor` session log; spoof master no longer kills a live controller just to toggle.
+- Home: status pills + Games/Thermal/Spoof shortcuts; the rest sits under Tune.
+- Confirm dialogs for Advanced thermal, spoof master, and kill-background.
+- Logs: boot / game session / thermal verify sources.
+- Empty compat / preload / sensor home rows stay hidden until they have data.
+- Profile cards run CPU + GPU + scheduler (+ perf if on) in one shot.
+
+## GitHub
+
 - **v2.5.39-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.39-skipmount/SweetDreams-v2_5_39-skipmount.zip)
 - **v2.5.38-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.38-skipmount/SweetDreams-v2_5_38-skipmount.zip)
 
