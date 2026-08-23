@@ -1,1 +1,0 @@
-com.activision.callofduty.shooter|legion

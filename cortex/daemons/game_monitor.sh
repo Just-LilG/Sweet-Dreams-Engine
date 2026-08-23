@@ -607,6 +607,7 @@ while true; do
             # actual page-cache warm takes - neither should block this loop.
             sh "$CORTEX/games/preload.sh" "$RUNNING_GAME" 2>/dev/null &
 
+            sh "$CORTEX/games/cpuinfo_mount.sh" "$RUNNING_GAME" on 2>/dev/null &
             LAST_GAME="$RUNNING_GAME"
             echo "$LAST_GAME" > "$LAST_GAME_FILE"
             LOOP_ITER=0
@@ -821,6 +822,7 @@ while true; do
             BACKGROUND_SINCE=0
             log_p "Game OFF: $LAST_GAME"
             log_s "thermal restore $LAST_GAME"
+            sh "$CORTEX/games/cpuinfo_mount.sh" "$LAST_GAME" off 2>/dev/null
             sh "$CORTEX/thermal/apply.sh" game_end 2>/dev/null
             rm -f "$CORTEX/thermal/spoof_c_session.txt"
             sh "$CORTEX/touch/apply.sh" game_end 2>/dev/null

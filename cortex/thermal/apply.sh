@@ -62,15 +62,24 @@ already_mounted() {
     grep -qF " $1 " /proc/mounts 2>/dev/null
 }
 
+bind_in_ns() {
+    local src="$1" target="$2"
+    mount --bind "$src" "$target" 2>/dev/null && return 0
+    mount -o bind "$src" "$target" 2>/dev/null && return 0
+    # KernelSU/Magisk may isolate this script's mount ns from apps.
+    nsenter -t 1 -m -- mount --bind "$src" "$target" 2>/dev/null && return 0
+    nsenter -t 1 -m -- mount -o bind "$src" "$target" 2>/dev/null && return 0
+    return 1
+}
+
 bind_spoof() {
     local target="$1" src="$2"
     [ -f "$target" ] || return 1
     already_mounted "$target" && return 0
-    if mount -o bind "$src" "$target" 2>/dev/null; then
+    if bind_in_ns "$src" "$target"; then
         echo "$target" >> "$MOUNT_LIST"
         return 0
     fi
-    # Some kernels refuse bind on sysfs; try writing the value (may be ignored).
     if cat "$src" > "$target" 2>/dev/null; then
         return 0
     fi
@@ -102,6 +111,8 @@ unmount_spoofs() {
         while IFS= read -r t; do
             [ -n "$t" ] || continue
             umount -l "$t" 2>/dev/null
+            nsenter -t 1 -m --             umount -l "$t" 2>/dev/null
+            nsenter -t 1 -m -- umount -l "$t" 2>/dev/null
         done < "$MOUNT_LIST"
     fi
     # Sweep in case the list was lost (module update mid-game).

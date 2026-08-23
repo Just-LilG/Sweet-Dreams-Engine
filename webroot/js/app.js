@@ -108,15 +108,23 @@ function shEsc(s) {
   return String(s).replace(/'/g, `'\\''`);
 }
 
+function persistFile(path) {
+  return se(`sh "${CORTEX}/persist.sh" file '${shEsc(path)}'`);
+}
+
 function write(path, value) {
-  return se(`printf '%s\\n' '${shEsc(value)}' > '${shEsc(path)}'`);
+  return se(`mkdir -p "$(dirname '${shEsc(path)}')" && printf '%s\\n' '${shEsc(value)}' > '${shEsc(path)}'`).then(() => persistFile(path));
 }
 
 async function writeLines(path, lines) {
-  if (!lines.length) return se(`: > '${shEsc(path)}'`);
+  if (!lines.length) {
+    await se(`: > '${shEsc(path)}'`);
+    return persistFile(path);
+  }
   const body = lines.join('\n') + '\n';
   const b64 = btoa(unescape(encodeURIComponent(body)));
-  return se(`echo '${b64}' | base64 -d > '${shEsc(path)}'`);
+  await se(`echo '${b64}' | base64 -d > '${shEsc(path)}'`);
+  return persistFile(path);
 }
 
 function apply(rel) {
@@ -996,6 +1004,7 @@ function mod_renderscale_pickRes(el) {
   const res = el.dataset.res;
   write(`${CORTEX}/display/resolution.txt`, res);
   txt('home-sub-res', res === 'native' ? 'Native — Full' : Math.round(parseFloat(res) * 100) + '%');
+  se(`for p in $(cat "${CORTEX}/games/selected.txt" 2>/dev/null); do [ -n "$p" ] && sh "${CORTEX}/display/apply_resolution.sh" '${res}' "$p"; done`);
   toast('Render scale: ' + (res === 'native' ? 'Native' : res));
 }
 window.mod_renderscale_pickRes = mod_renderscale_pickRes;
@@ -1186,12 +1195,24 @@ function mod_engine_toggleEngine() {
 window.mod_engine_toggleEngine = mod_engine_toggleEngine;
 
 async function loadEngine() {
-  const [en, st, ov] = await batched([
+  const [en, st, ov, sched, night, morn, low, log] = await batched([
     `cat "${CORTEX}/ai/enabled.txt" 2>/dev/null`,
     `cat "${CORTEX}/ai/status.txt" 2>/dev/null`,
     `cat "${CORTEX}/ai/override_active.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/schedule_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/schedule_night_hour.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/schedule_morning_hour.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/schedule_low_bat_pct.txt" 2>/dev/null`,
+    `tail -n 8 "${MOD}/boot.log" 2>/dev/null | grep '\\[AI\\]'`,
   ]);
   setOn(document.getElementById('engine-tog-eng'), en !== 'off');
+  setOn(document.getElementById('engine-tog-sched'), sched === 'on');
+  const nh = document.getElementById('engine-night-h');
+  const mh = document.getElementById('engine-morning-h');
+  const lb = document.getElementById('engine-low-bat');
+  if (nh) nh.value = night || '23';
+  if (mh) mh.value = morn || '7';
+  if (lb) lb.value = low || '15';
   const p = (st || '').split('|');
   txt('engine-stat-temp', p[0] ? p[0] + '°C' : '—');
   txt('engine-stat-batt', p[1] ? p[1] + '%' : '—');
@@ -1201,31 +1222,85 @@ async function loadEngine() {
   txt('engine-eng-temp', p[0] ? p[0] + '°C' : '—');
   const banner = document.getElementById('engine-override-banner');
   if (banner) banner.style.display = ov === 'on' ? 'block' : 'none';
+  const logEl = document.getElementById('engine-last-log');
+  if (logEl) logEl.textContent = log || 'No engine log yet.';
 }
 
+function mod_engine_toggleSched() {
+  const t = document.getElementById('engine-tog-sched');
+  t.classList.toggle('on');
+  write(`${CORTEX}/ai/schedule_enabled.txt`, isOn(t) ? 'on' : 'off');
+}
+window.mod_engine_toggleSched = mod_engine_toggleSched;
+
+function mod_engine_saveSched() {
+  const night = document.getElementById('engine-night-h')?.value || '23';
+  const morn = document.getElementById('engine-morning-h')?.value || '7';
+  const low = document.getElementById('engine-low-bat')?.value || '15';
+  write(`${CORTEX}/ai/schedule_night_hour.txt`, night);
+  write(`${CORTEX}/ai/schedule_morning_hour.txt`, morn);
+  write(`${CORTEX}/ai/schedule_low_bat_pct.txt`, low);
+}
+window.mod_engine_saveSched = mod_engine_saveSched;
+
+function mod_engine_applyNow() {
+  se(`sh "${CORTEX}/cpu/apply.sh"; sh "${CORTEX}/gpu/apply.sh"`);
+  toast('Engine profile applied');
+}
+window.mod_engine_applyNow = mod_engine_applyNow;
+
+function mod_engine_restart() {
+  se(`pkill -f "${CORTEX}/ai/engine.sh"; sleep 1; nohup sh "${CORTEX}/ai/engine.sh" >> "${MOD}/boot.log" 2>&1 &`);
+  toast('Engine restarted');
+}
+window.mod_engine_restart = mod_engine_restart;
+
 /* ── Thermal ── */
+function thermalEngineMode(ui) {
+  return ui === 'lite' ? 'lite' : 'extreme';
+}
+
+function thermalShowMode(ui) {
+  document.querySelectorAll('#thermal-mode-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.mode === ui));
+  const lite = document.getElementById('thermal-lite-info');
+  const adv = document.getElementById('thermal-advanced-info');
+  const ext = document.getElementById('thermal-extreme-info');
+  const spoof = document.getElementById('thermal-spoof-block');
+  if (lite) lite.style.display = ui === 'lite' ? 'block' : 'none';
+  if (adv) adv.style.display = ui === 'advanced' ? 'block' : 'none';
+  if (ext) ext.style.display = ui === 'extreme' ? 'block' : 'none';
+  if (spoof) spoof.style.display = ui === 'lite' ? 'none' : 'block';
+}
+
 function mod_thermal_toggleThermal() {
   const t = document.getElementById('thermal-tog-th');
   t.classList.toggle('on');
   const armed = isOn(t);
-  se(`. "${CORTEX}/thermal/state.sh"; thermal_set_armed ${armed ? 'armed' : 'off'}`);
+  const ui = document.querySelector('#thermal-mode-chips .chip.active')?.dataset.mode || 'lite';
+  se(`. "${CORTEX}/thermal/state.sh"; thermal_set_armed ${armed ? 'armed' : 'off'}`).then(() => persistFile(`${CORTEX}/thermal/armed.txt`));
   txt('thermal-th-state', armed ? 'Armed' : 'Off');
   const el = document.getElementById('thermal-th-state');
   if (el) el.style.color = armed ? 'var(--ok)' : 'var(--danger)';
-  txt('home-sub-thermal', armed ? 'Armed — in-game only' : 'Off — real sensors');
+  txt('home-sub-thermal', armed ? `Armed · ${ui}` : 'Off — real sensors');
+  if (armed) {
+    se(`sh "${CORTEX}/thermal/apply.sh" game_start ${thermalEngineMode(ui)}`);
+  } else {
+    se(`sh "${CORTEX}/thermal/apply.sh" game_end`);
+  }
 }
 window.mod_thermal_toggleThermal = mod_thermal_toggleThermal;
 
 function mod_thermal_pickMode(el) {
-  const isAdv = el.dataset.mode === 'advanced';
-  if (isAdv && !confirm('Advanced spoofs battery and extra sensors. Android may not see real overheating. Continue?')) return;
-  document.querySelectorAll('#thermal-mode-chips .chip').forEach((c) => c.classList.remove('active'));
-  el.classList.add('active');
-  const lite = document.getElementById('thermal-lite-info');
-  const adv = document.getElementById('thermal-advanced-info');
-  if (lite) lite.style.display = isAdv ? 'none' : 'block';
-  if (adv) adv.style.display = isAdv ? 'block' : 'none';
-  write(`${CORTEX}/thermal/mode.txt`, isAdv ? 'extreme' : 'lite');
+  const ui = el.dataset.mode || 'lite';
+  if (ui === 'advanced' && !confirm('Advanced spoofs battery and extra sensors. Android may not see real overheating. Continue?')) return;
+  if (ui === 'extreme' && !confirm('Extreme spoofs every temp sensor and applies immediately when armed. Continue?')) return;
+  thermalShowMode(ui);
+  write(`${CORTEX}/thermal/mode.txt`, ui === 'lite' ? 'lite' : 'extreme');
+  write(`${CORTEX}/thermal/ui_mode.txt`, ui);
+  const armed = isOn(document.getElementById('thermal-tog-th'));
+  if (armed && ui !== 'lite') {
+    se(`sh "${CORTEX}/thermal/apply.sh" game_start extreme`);
+  }
 }
 window.mod_thermal_pickMode = mod_thermal_pickMode;
 
@@ -1243,9 +1318,9 @@ function mod_thermal_onSpoofInput(el) {
   _thermalSpoofTimer = setTimeout(() => {
     write(`${CORTEX}/thermal/spoof_c.txt`, String(c)).then(() => {
       const armed = isOn(document.getElementById('thermal-tog-th'));
-      const adv = document.querySelector('#thermal-mode-chips .chip.active')?.dataset.mode === 'advanced';
+      const ui = document.querySelector('#thermal-mode-chips .chip.active')?.dataset.mode || 'lite';
       if (armed) {
-        se(`sh "${CORTEX}/thermal/apply.sh" game_start ${adv ? 'extreme' : 'lite'}`);
+        se(`sh "${CORTEX}/thermal/apply.sh" game_start ${thermalEngineMode(ui)}`);
       }
     });
   }, 250);
@@ -1265,12 +1340,9 @@ async function loadThermal() {
   const armed = armedFile === 'armed' || st === 'disabled';
   setOn(document.getElementById('thermal-tog-th'), armed);
   txt('thermal-th-state', armed ? 'Armed' : 'Off');
-  const ui = mode === 'extreme' ? 'advanced' : 'lite';
-  document.querySelectorAll('#thermal-mode-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.mode === ui));
-  const lite = document.getElementById('thermal-lite-info');
-  const adv = document.getElementById('thermal-advanced-info');
-  if (lite) lite.style.display = ui === 'advanced' ? 'none' : 'block';
-  if (adv) adv.style.display = ui === 'advanced' ? 'block' : 'none';
+  const uiFile = (await se(`cat "${CORTEX}/thermal/ui_mode.txt" 2>/dev/null`, '')).trim();
+  const ui = uiFile || (mode === 'extreme' ? 'advanced' : 'lite');
+  thermalShowMode(ui);
   const tRaw = parseInt(temp, 10);
   if (Number.isFinite(tRaw)) txt('thermal-real-temp', (tRaw / 10).toFixed(1) + '°C');
   const zRaw = parseInt(z0, 10);
@@ -1366,13 +1438,6 @@ function mod_devicespoof_toggleCpu() {
   const picker = document.getElementById('devicespoof-cpu-picker');
   if (picker) picker.style.display = isOn(t) ? 'block' : 'none';
   if (!_spoofPkg) return;
-  const deviceId = document.getElementById('devicespoof-device-select')?.value || 'off';
-  if (isOn(t) && deviceId === 'off') {
-    toast('Pick a spoof device first — CPU spoof needs one to attach to');
-    t.classList.remove('on');
-    if (picker) picker.style.display = 'none';
-    return;
-  }
   saveSpoofAssignment();
 }
 window.mod_devicespoof_toggleCpu = mod_devicespoof_toggleCpu;
@@ -1434,6 +1499,8 @@ async function saveSpoofAssignment() {
   if (deviceId !== 'off') {
     const tag = cpuOn ? `:cpu=${cpuKey}` : '';
     lines.push(_spoofPkg + tag + '|' + deviceId);
+  } else if (cpuOn) {
+    lines.push(_spoofPkg + `:cpu=${cpuKey}|off`);
   }
   await writeLines(`${CORTEX}/games/spoof_assignments.txt`, lines);
   renderSpoofDetails(deviceId);
@@ -1455,10 +1522,18 @@ function gameAvatarHtml(pkg) {
 
 async function fillGameIcons(pkgs) {
   for (const pkg of pkgs.slice(0, 24)) {
-    const b64 = await se(`sh "${CORTEX}/games/get_icon.sh" '${pkg.replace(/'/g, "")}' 2>/dev/null`, '');
-    if (!b64 || b64.length < 32) continue;
+    const raw = await se(`sh "${CORTEX}/games/get_icon.sh" '${pkg.replace(/'/g, "")}' 2>/dev/null`, '');
+    if (!raw || raw.length < 24) continue;
+    let mime = 'image/png';
+    let b64 = raw.trim();
+    const pipe = raw.indexOf('|');
+    if (pipe > 0 && pipe < 20) {
+      mime = raw.slice(0, pipe).trim();
+      b64 = raw.slice(pipe + 1).trim();
+    }
+    if (b64.length < 32) continue;
     document.querySelectorAll(`.game-icon[data-pkg="${pkg}"]`).forEach((el) => {
-      el.innerHTML = `<img alt="" src="data:image/png;base64,${b64.trim()}" style="width:100%;height:100%;border-radius:10px;object-fit:cover;">`;
+      el.innerHTML = `<img alt="" src="data:${mime};base64,${b64}">`;
     });
   }
 }
@@ -1471,6 +1546,7 @@ async function mod_games_load() {
     return;
   }
   if (statusEl) statusEl.textContent = 'Loading games…';
+  await se(`sh "${CORTEX}/games/list_apps.sh" prune`);
   const sel = await se(`cat "${CORTEX}/games/selected.txt" 2>/dev/null`, '');
   _gamesSelected = new Set(sel.split(/\n/).map((s) => s.trim()).filter(Boolean));
   const pkgs = Array.from(_gamesSelected);
@@ -1507,6 +1583,10 @@ function mod_games_renderSelected() {
         <div class="game-name">${gameLabel(pkg)}</div>
         <div class="game-pkg" style="font-size:10px;color:rgba(255,255,255,.45);overflow:hidden;text-overflow:ellipsis;">${pkg}</div>
         <label style="font-size:10px;color:rgba(255,255,255,.5);">Spoof °C <input type="number" min="0" max="45" placeholder="default" style="width:64px;margin-left:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:8px;padding:2px 6px;" onchange="mod_games_setSpoofC('${pkg}', this.value)"></label>
+      </div>
+      <div class="game-actions">
+        <button type="button" onclick="event.stopPropagation();mod_games_launch('${pkg}')">Launch</button>
+        <button type="button" onclick="event.stopPropagation();mod_games_stop('${pkg}')">Stop</button>
       </div>
       <div class="switch on" onclick="mod_games_toggle('${pkg}', this)"></div>
     </div>`;
@@ -1555,6 +1635,24 @@ async function mod_games_toggle(pkg, el) {
   fillGameIcons(Array.from(_gamesSelected));
 }
 window.mod_games_toggle = mod_games_toggle;
+
+function mod_games_launch(pkg) {
+  toast('Launching…');
+  se(`sh "${CORTEX}/games/control.sh" launch '${pkg.replace(/'/g, "")}'`);
+}
+window.mod_games_launch = mod_games_launch;
+
+function mod_games_stop(pkg) {
+  se(`sh "${CORTEX}/games/control.sh" stop '${pkg.replace(/'/g, "")}'`);
+  toast('Force-stopped');
+}
+window.mod_games_stop = mod_games_stop;
+
+function mod_games_stopAll() {
+  se(`sh "${CORTEX}/games/control.sh" stop_all`);
+  toast('Stopped selected games');
+}
+window.mod_games_stopAll = mod_games_stopAll;
 
 /* ── Logs ── */
 async function mod_logs_refresh() {
