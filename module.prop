@@ -4,3 +4,4 @@ version=v2.5.38-skipmount
 versionCode=288
 author=Lil G Tech Labs
 description=MediaTek FPS Unlocker & Thermal Bypass Engine. Put the competition to sleep.
+updateJson=https://raw.githubusercontent.com/Just-LilG/Sweet-Dreams-Engine/main/update.json

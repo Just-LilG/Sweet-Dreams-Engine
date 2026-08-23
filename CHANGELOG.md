@@ -1,5 +1,9 @@
 # Changelog
 
+## GitHub
+
+- **v2.5.38-skipmount** — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.38-skipmount/SweetDreams-v2_5_38-skipmount.zip)
+
 ## v2.5.38-skipmount
 
 - Import the current skipmount module tree (versionCode 288).
