@@ -1,0 +1,1540 @@
+/* Sweet Dreams WebUI — lavender/vanilla shell wired to cortex.
+   Completes sweet-dreams-app-3.html against v2.5.38-skipmount. */
+
+const MOD = '/data/adb/modules/sweet_dreams';
+const CORTEX = `${MOD}/cortex`;
+const GAUGE_C = 2 * Math.PI * 47;
+
+const RENDER_LABELS = {
+  default: ['Default', 'System-chosen, no override'],
+  skiavk: ['SkiaVK', 'Best — Vulkan 1.3.177'],
+  skiavkthreaded: ['SkiaVK (Threaded)', 'Vulkan + threaded backend'],
+  skiagl: ['SkiaGL', 'Stable OpenGL fallback'],
+  skiaglthreaded: ['SkiaGL (Threaded)', 'SkiaGL + threaded backend'],
+  opengl: ['OpenGL ES', 'Legacy ES 3.2'],
+  openglthreaded: ['OpenGL ES (Threaded)', 'Legacy ES + threaded backend'],
+  vulkan: ['Vulkan', 'Same as SkiaVK — real mechanism, not a separate renderer'],
+};
+
+const SPOOF_DEVICES = [
+  { id: 'off', name: 'Real Device', desc: 'No spoof — real device identity' },
+  { id: 'legion', name: 'Lenovo Legion Y700 (2023)', desc: 'Triggers Legion gaming mode in CODM' },
+  { id: 'redmagic', name: 'REDMAGIC 11 PRO', desc: 'Nubia flagship — unlocks 120 FPS' },
+  { id: 'redmagic9', name: 'REDMAGIC 9 Pro', desc: 'ZTE/Nubia — alternative 120 FPS' },
+  { id: 'rog', name: 'ASUS ROG Phone 6D Ultimate', desc: 'ROG Valhall profile + Vulkan opts' },
+  { id: 'blackshark', name: 'Black Shark 4', desc: 'Shoulder trigger + 90 FPS profile' },
+  { id: 'oneplus', name: 'OnePlus 13', desc: 'OPlus Game Space — smooth 90 FPS' },
+  { id: 'samsung', name: 'Galaxy Z Fold 5', desc: 'Game Booster tier unlock' },
+];
+
+const CPU_PROFILES = [
+  { key: 'sd8elite', name: 'Qualcomm Snapdragon 8 Elite' },
+  { key: 'dimensity9400plus', name: 'MediaTek Dimensity 9400+' },
+  { key: 'dimensity8350', name: 'MediaTek Dimensity 8350' },
+  { key: '9000', name: 'HiSilicon Kirin 9000' },
+];
+
+let _toastTimer;
+let _spoofPkg = '';
+let _gamesAll = [];
+let _gamesSelected = new Set();
+let _dnsTimer;
+let _touchTimer;
+
+function sdHasBridge() {
+  return typeof ksu !== 'undefined' && typeof ksu.exec === 'function';
+}
+
+function exec(command, timeoutMs = 20000) {
+  return new Promise((resolve) => {
+    if (!sdHasBridge()) {
+      console.warn('[Bridge] mock:', command);
+      resolve('');
+      return;
+    }
+    let settled = false;
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(val == null ? '' : String(val));
+    };
+    const timeout = setTimeout(() => finish(''), timeoutMs);
+    const handler = (errno, stdout) => {
+      finish(errno === 0 || errno === undefined || errno === null ? (stdout || '') : '');
+    };
+    const cb = `exec_cb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    window[cb] = (errno, stdout, stderr) => {
+      delete window[cb];
+      handler(errno, stdout, stderr);
+    };
+    try {
+      if (ksu.exec.length >= 3) {
+        ksu.exec(command, {}, handler);
+        return;
+      }
+      const maybe = ksu.exec(command, `window.${cb}`);
+      if (maybe && typeof maybe.then === 'function') {
+        maybe.then((result) => {
+          const stdout = (result && result.stdout) || (typeof result === 'string' ? result : '');
+          const errno = (result && result.errno) || 0;
+          handler(errno, stdout);
+        }).catch(() => finish(''));
+      }
+    } catch (e) {
+      finish('');
+    }
+  });
+}
+
+async function se(cmd, fb = '', timeoutMs) {
+  try {
+    const out = (await exec(cmd, timeoutMs)).trim();
+    return out === '' ? fb : out;
+  } catch (e) {
+    return fb;
+  }
+}
+
+function shEsc(s) {
+  return String(s).replace(/'/g, `'\\''`);
+}
+
+function write(path, value) {
+  return se(`printf '%s\\n' '${shEsc(value)}' > '${shEsc(path)}'`);
+}
+
+async function writeLines(path, lines) {
+  if (!lines.length) return se(`: > '${shEsc(path)}'`);
+  const body = lines.join('\n') + '\n';
+  const b64 = btoa(unescape(encodeURIComponent(body)));
+  return se(`echo '${b64}' | base64 -d > '${shEsc(path)}'`);
+}
+
+function apply(rel) {
+  return se(`sh "${CORTEX}/${rel}"`);
+}
+
+function toast(msg) {
+  const el = document.getElementById('sd-toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function setOn(el, on) {
+  if (!el) return;
+  el.classList.toggle('on', !!on);
+}
+
+function isOn(el) {
+  return !!(el && el.classList.contains('on'));
+}
+
+function sdPickChip(el) {
+  const row = el.closest('.chip-row');
+  if (!row) return;
+  row.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === el));
+}
+
+function sdPickMode(el) {
+  const container = el.parentElement;
+  if (!container) return;
+  container.querySelectorAll('.mode-card').forEach((c) => c.classList.toggle('active', c === el));
+}
+
+function setTheme(name) {
+  document.documentElement.setAttribute('data-theme', name);
+  try { localStorage.setItem('sd_theme', name); } catch (e) {}
+  se(`mkdir -p "${CORTEX}/settings" && echo '${shEsc(name)}' > "${CORTEX}/settings/theme.txt"`);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    meta.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--theme-color-meta').trim());
+  }
+  document.querySelectorAll('.theme-card').forEach((c) => c.classList.remove('active'));
+  document.getElementById('theme-card-' + name)?.classList.add('active');
+}
+
+window.setTheme = setTheme;
+window.sdPickChip = sdPickChip;
+window.sdPickMode = sdPickMode;
+
+function shellNav(key) {
+  document.querySelectorAll('.screen').forEach((s) => { s.style.display = 'none'; });
+  const target = document.getElementById('panel-' + key);
+  if (target) {
+    target.style.display = '';
+    const scroller = document.getElementById('app-scroll');
+    if (scroller) scroller.scrollTop = 0;
+    else window.scrollTo(0, 0);
+  }
+  try { history.pushState({ panel: key }, '', '#' + key); } catch (e) {}
+  sdSyncBottomNav(key);
+  const fab = document.getElementById('apply-fab');
+  if (fab) fab.style.display = key === 'home' ? '' : 'none';
+  loadPanel(key);
+}
+window.shellNav = shellNav;
+
+function sdSyncBottomNav(key) {
+  const tabMap = { home: 0, games: 1, logs: 2 };
+  if (!(key in tabMap)) return;
+  document.querySelectorAll('.nav-wrap .nav-item').forEach((el, i) => {
+    el.classList.toggle('active', i === tabMap[key]);
+  });
+}
+
+function loadPanel(key) {
+  const loaders = {
+    home: refreshHome,
+    games: mod_games_load,
+    logs: mod_logs_refresh,
+    cpu: loadCpu,
+    gpu: loadGpu,
+    ram: loadRam,
+    storage: loadStorage,
+    battery: loadBattery,
+    network: loadNet,
+    killbg: loadKillBg,
+    refresh: loadRefresh,
+    renderscale: loadRes,
+    animscale: loadAnim,
+    touch: loadTouch,
+    notify: loadNotify,
+    audio: loadAudio,
+    engine: loadEngine,
+    health: loadHealth,
+    compat: loadCompat,
+    conflicts: loadConflicts,
+    preloadlist: loadPreloadList,
+    gamepreload: loadGamePreload,
+    sensor: loadSensor,
+    bypass: loadBypass,
+    thermal: loadThermal,
+    devicespoof: loadSpoof,
+  };
+  const fn = loaders[key];
+  if (fn) fn();
+}
+
+function txt(id, value, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value;
+  if (cls !== undefined) el.className = cls;
+}
+
+async function batched(cmds) {
+  const M = '@SD@';
+  const joined = cmds.map((c) => `${c}; echo "${M}"`).join('; ');
+  const raw = await se(joined, '');
+  const parts = raw.split(M).map((s) => s.trim());
+  return cmds.map((_, i) => parts[i] || '');
+}
+
+async function refreshHome() {
+  const rows = await batched([
+    `getprop ro.product.model`,
+    `getprop ro.build.version.release`,
+    `cat /sys/class/power_supply/battery/temp 2>/dev/null`,
+    `cat /sys/class/power_supply/battery/capacity 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null`,
+    `cat "${CORTEX}/cpu/profile.txt" 2>/dev/null`,
+    `cat "${CORTEX}/thermal/status.txt" 2>/dev/null`,
+    `cat "${CORTEX}/thermal/mode.txt" 2>/dev/null`,
+    `cat "${CORTEX}/perf/enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/net/status.txt" 2>/dev/null`,
+    `cat "${CORTEX}/net/congestion.txt" 2>/dev/null`,
+    `cat "${CORTEX}/display/fps.txt" 2>/dev/null`,
+    `cat "${CORTEX}/display/render.txt" 2>/dev/null`,
+    `cat "${CORTEX}/display/resolution.txt" 2>/dev/null`,
+    `cat "${CORTEX}/display/vsync.txt" 2>/dev/null`,
+    `cat "${CORTEX}/display/anim_scale.txt" 2>/dev/null`,
+    `cat "${CORTEX}/touch/status.txt" 2>/dev/null`,
+    `cat "${CORTEX}/touch/report_rate.txt" 2>/dev/null`,
+    `cat "${CORTEX}/battery/limit_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/battery/limit_pct.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ram/mode.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ram/zram_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/kill_bg_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/audio/enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/notify/enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/status.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/spoof_master.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/selected.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/preload_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/sensor/enabled.txt" 2>/dev/null`,
+    `cat "${MOD}/module.prop" 2>/dev/null | grep '^version='`,
+    `cat "${CORTEX}/daemons/last_game.txt" 2>/dev/null`,
+    `df -k /data 2>/dev/null | tail -1`,
+    `wc -l < "${CORTEX}/games/selected.txt" 2>/dev/null`,
+  ]);
+
+  const model = rows[0] || 'Unknown device';
+  const android = rows[1] || '?';
+  txt('home-device-sub', `${model} · Android ${android}`);
+
+  const tempRaw = parseInt(rows[2], 10);
+  const tempC = Number.isFinite(tempRaw) ? tempRaw / 10 : 0;
+  txt('home-gauge-val', `${Math.round(tempC)}°`);
+  let lbl = 'Cool';
+  let offset = GAUGE_C * (1 - Math.min(tempC / 60, 1));
+  const fill = document.getElementById('home-gauge-fill');
+  if (tempC >= 47) { lbl = 'Hot'; if (fill) fill.style.stroke = 'var(--danger)'; }
+  else if (tempC >= 42) { lbl = 'Warm'; if (fill) fill.style.stroke = 'var(--warn)'; }
+  else { lbl = 'No Throttle'; if (fill) fill.style.stroke = 'var(--lavender)'; }
+  txt('home-gauge-lbl', lbl);
+  if (fill) fill.setAttribute('stroke-dashoffset', String(offset));
+
+  txt('home-readout-batt', (rows[3] || '—') + '%');
+  txt('home-readout-gov', rows[4] || '—');
+
+  const profile = rows[5] || 'gaming';
+  syncProfileUI(profile, false);
+  txt('home-cpu-value', profile === 'gaming' ? 'Performance' : profile === 'battery' ? 'Efficiency' : 'Balanced');
+  txt('home-sub-cpu', `Profile: ${profile}`);
+
+  const render = rows[12] || 'skiavk';
+  txt('home-gpu-value', (RENDER_LABELS[render] || [render])[0]);
+  txt('home-sub-gpu', (RENDER_LABELS[render] || ['', render])[1] || render);
+  txt('home-sub-render', (RENDER_LABELS[render] || [render])[0]);
+
+  const netOn = rows[9] === 'on';
+  const cc = rows[10] || 'bbr';
+  txt('home-sub-net', netOn ? `${cc.toUpperCase()} + TCP fastopen` : 'Off', netOn ? 'row-desc ok' : 'row-desc');
+
+  setOn(document.getElementById('home-tog-perf'), rows[8] === 'on');
+  txt('home-sub-perf', rows[8] === 'on' ? 'On — MTK scenario API' : 'Off', rows[8] === 'on' ? 'row-desc ok' : 'row-desc');
+
+  txt('home-sub-engine', rows[25] === 'on' ? (rows[26] ? `Live · ${rows[26].split('|')[0] || 'ok'}` : 'On') : 'Off');
+  txt('home-sub-ram', `${rows[21] === 'on' ? 'ZRAM' : 'No ZRAM'} · ${rows[20] || 'balanced'} mode`);
+  txt('home-sub-fps', (rows[11] || '90') + ' Hz');
+  const res = rows[13] || 'native';
+  txt('home-sub-res', res === 'native' ? 'Native — Full' : Math.round(parseFloat(res) * 100) + '%');
+  setOn(document.getElementById('home-tog-vsync'), rows[14] !== 'off');
+  txt('home-sub-vsync', rows[14] === 'off' ? 'Off' : 'On', rows[14] === 'off' ? 'row-desc warn' : 'row-desc ok');
+  txt('home-sub-anim', (rows[15] || '0.5') + 'x');
+  setOn(document.getElementById('home-tog-touch'), rows[16] === 'on');
+  txt('home-sub-touch', rows[16] === 'on' ? `Active — ${rows[17] || '240'}Hz` : 'Off', rows[16] === 'on' ? 'row-desc ok' : 'row-desc');
+  txt('home-sub-battery', rows[18] === 'on' ? `On · stop at ${rows[19] || '80'}%` : 'Off');
+  const df = rows[33] || '';
+  const dfParts = df.trim().split(/\s+/);
+  if (dfParts.length >= 4) {
+    const usedPct = dfParts[4] || '—';
+    const availKb = parseInt(dfParts[3], 10);
+    const availGb = Number.isFinite(availKb) ? (availKb / 1024 / 1024).toFixed(1) : '—';
+    txt('home-sub-storage', `${usedPct} used · ${availGb} GB free`);
+  }
+  txt('home-sub-killbg', rows[22] === 'on' ? 'On — kill on game launch' : 'Off');
+  txt('home-sub-audio', rows[23] === 'on' ? 'On' : 'Off');
+  txt('home-sub-notify', rows[24] === 'on' ? 'On' : 'Off');
+  const nGames = (rows[28] || '').split(/\n/).filter(Boolean).length;
+  txt('home-sub-games', nGames ? `${nGames} game${nGames === 1 ? '' : 's'} selected` : 'None selected');
+  txt('home-sub-gamepreload', rows[29] === 'on' ? 'On' : 'Off');
+  txt('home-sub-sensor', rows[30] === 'on' ? 'Armed' : 'Off');
+  const bypassNode = await se(`cat "${CORTEX}/battery/bypass_node.txt" 2>/dev/null`, '');
+  txt('home-sub-bypass', bypassNode ? 'Node saved' : 'Scan required');
+
+  const thermalArmed = rows[6] === 'disabled';
+  setOn(document.getElementById('home-tog-thermal'), thermalArmed);
+  txt('home-sub-thermal', thermalArmed ? `Armed · ${rows[7] || 'extreme'}` : 'Off — real sensors');
+  txt('home-sub-spoof', rows[27] === 'on' ? 'Active — Zygisk + prop hook' : 'Off');
+
+  const lastGame = rows[32];
+  const banner = document.getElementById('home-game-status-banner');
+  if (banner) {
+    if (lastGame) {
+      banner.style.display = 'flex';
+      txt('home-game-status-name', lastGame.split('.').pop() + ' running');
+      txt('home-game-status-sub', 'Boost active · OOM shield on');
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  refreshHealthBanner();
+  refreshConflictBanner();
+}
+
+function syncProfileUI(p, animate) {
+  const grid = document.getElementById('home-profile-picker');
+  if (!grid) return;
+  const cards = Array.from(grid.children);
+  const selected = cards.find((c) => c.dataset.profile === p);
+  if (!selected) return;
+  const others = cards.filter((c) => c !== selected);
+  if (animate !== false) {
+    const firstRects = new Map(cards.map((c) => [c, c.getBoundingClientRect()]));
+    grid.innerHTML = '';
+    if (others[0]) grid.appendChild(others[0]);
+    grid.appendChild(selected);
+    if (others[1]) grid.appendChild(others[1]);
+    cards.forEach((c) => {
+      const first = firstRects.get(c);
+      if (!first) return;
+      const last = c.getBoundingClientRect();
+      const dx = first.left - last.left;
+      if (dx !== 0) {
+        c.style.transition = 'none';
+        c.style.transform += ` translateX(${dx}px)`;
+        requestAnimationFrame(() => {
+          c.style.transition = '';
+          c.style.transform = c.classList.contains('active') ? 'scale(1.08)' : 'scale(.96)';
+        });
+      }
+    });
+    selected.classList.remove('pop');
+    void selected.offsetWidth;
+    selected.classList.add('pop');
+  }
+  const balancedColor = getComputedStyle(document.documentElement).getPropertyValue('--lavender-pale').trim() || '#e6dcfb';
+  const colors = { gaming: '#ffb39c', balanced: balancedColor, battery: '#a8ecc0' };
+  const names = { gaming: 'Gaming', balanced: 'Balanced', battery: 'Battery' };
+  Array.from(grid.children).forEach((c) => c.classList.toggle('active', c.dataset.profile === p));
+  const val = document.getElementById('home-readout-profile-val');
+  if (val) {
+    val.style.color = colors[p] || balancedColor;
+    val.textContent = names[p] || p;
+  }
+}
+
+function mod_home_setProfile(p) {
+  syncProfileUI(p, true);
+  toast('Profile: ' + p);
+  write(`${CORTEX}/cpu/profile.txt`, p).then(() => {
+    apply('cpu/apply.sh');
+    apply('gpu/apply.sh');
+  });
+  txt('home-cpu-value', p === 'gaming' ? 'Performance' : p === 'battery' ? 'Efficiency' : 'Balanced');
+}
+window.mod_home_setProfile = mod_home_setProfile;
+
+function togglePerf(el) {
+  el.classList.toggle('on');
+  const next = isOn(el) ? 'on' : 'off';
+  write(`${CORTEX}/perf/enabled.txt`, next);
+  txt('home-sub-perf', next === 'on' ? 'On — MTK scenario API' : 'Off', next === 'on' ? 'row-desc ok' : 'row-desc');
+  toast('PerfService: ' + next);
+}
+window.togglePerf = togglePerf;
+
+function toggleVsync(el) {
+  el.classList.toggle('on');
+  const next = isOn(el) ? 'on' : 'off';
+  write(`${CORTEX}/display/vsync.txt`, next).then(() => apply('display/apply.sh'));
+  txt('home-sub-vsync', next === 'on' ? 'On' : 'Off', next === 'on' ? 'row-desc ok' : 'row-desc warn');
+  toast('V-Sync: ' + next);
+}
+window.toggleVsync = toggleVsync;
+
+function toggleTouch(el) {
+  el.classList.toggle('on');
+  const next = isOn(el) ? 'on' : 'off';
+  write(`${CORTEX}/touch/status.txt`, next).then(() => apply('touch/apply.sh'));
+  txt('home-sub-touch', next === 'on' ? 'Active' : 'Off');
+  toast('Touch engine: ' + next);
+}
+window.toggleTouch = toggleTouch;
+
+function toggleThermal(el) {
+  el.classList.toggle('on');
+  const armed = isOn(el);
+  const next = armed ? 'disabled' : 'enabled';
+  write(`${CORTEX}/thermal/status.txt`, next);
+  txt('home-sub-thermal', armed ? 'Armed — in-game only' : 'Off — real sensors');
+  toast(armed ? 'Thermal spoof armed' : 'Thermal spoof off');
+}
+window.toggleThermal = toggleThermal;
+
+async function applyAll() {
+  const fab = document.getElementById('apply-fab');
+  if (fab) fab.classList.add('applying');
+  toast('Applying…');
+  await se([
+    `sh "${CORTEX}/thermal/kill_daemons_only.sh"`,
+    `sh "${CORTEX}/cpu/apply.sh"`,
+    `sh "${CORTEX}/gpu/apply.sh"`,
+    `sh "${CORTEX}/touch/apply.sh"`,
+    `sh "${CORTEX}/net/apply.sh"`,
+    `sh "${CORTEX}/sched/apply.sh"`,
+    `sh "${CORTEX}/display/apply.sh"`,
+    `sh "${CORTEX}/ram/apply.sh"`,
+    `sh "${CORTEX}/battery/apply.sh"`,
+  ].join(' ; '), '', 45000);
+  const fps = await se(`cat "${CORTEX}/display/fps.txt"`, '90');
+  await se(`sh "${CORTEX}/fps/engine.sh" "${fps}" 2>/dev/null`);
+  if (fab) fab.classList.remove('applying');
+  toast('All tweaks applied');
+  refreshHome();
+}
+window.applyAll = applyAll;
+
+/* ── CPU ── */
+async function loadCpu() {
+  const [profile, a55, a76] = await batched([
+    `cat "${CORTEX}/cpu/profile.txt" 2>/dev/null`,
+    `cat "${CORTEX}/cpu/a55_max_khz.txt" 2>/dev/null`,
+    `cat "${CORTEX}/cpu/a76_max_khz.txt" 2>/dev/null`,
+  ]);
+  const gov = profile === 'gaming' ? 'performance' : profile === 'battery' ? 'powersave' : 'schedutil';
+  document.querySelectorAll('#cpu-profile-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.gov === gov));
+  txt('cpu-active-gov', gov);
+  const s0 = document.getElementById('cpu-policy0-max');
+  const s1 = document.getElementById('cpu-policy1-max');
+  if (s0 && a55) s0.value = String(Math.round(parseInt(a55, 10) / 1000) || s0.value);
+  if (s1 && a76) s1.value = String(Math.round(parseInt(a76, 10) / 1000) || s1.value);
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'cpu-apply-btn' || e.target.closest?.('#cpu-apply-btn')) {
+    e.preventDefault();
+    applyCpu();
+  }
+});
+
+async function applyCpu() {
+  const chip = document.querySelector('#cpu-profile-chips .chip.active');
+  const gov = chip ? chip.dataset.gov : 'performance';
+  const profile = gov === 'performance' ? 'gaming' : gov === 'powersave' ? 'battery' : 'balanced';
+  const a55 = parseInt(document.getElementById('cpu-policy0-max')?.value, 10);
+  const a76 = parseInt(document.getElementById('cpu-policy1-max')?.value, 10);
+  const btn = document.getElementById('cpu-apply-btn');
+  if (btn) btn.textContent = 'Applying…';
+  await write(`${CORTEX}/cpu/profile.txt`, profile);
+  if (Number.isFinite(a55)) await write(`${CORTEX}/cpu/a55_max_khz.txt`, String(a55 * 1000));
+  if (Number.isFinite(a76)) await write(`${CORTEX}/cpu/a76_max_khz.txt`, String(a76 * 1000));
+  await apply('cpu/apply.sh');
+  await apply('gpu/apply.sh');
+  if (btn) { btn.textContent = 'Applied ✓'; setTimeout(() => { btn.textContent = 'Apply'; }, 1400); }
+  toast('CPU profile: ' + profile);
+}
+
+async function resetCpu() {
+  await se(`rm -f "${CORTEX}/cpu/a55_max_khz.txt" "${CORTEX}/cpu/a76_max_khz.txt"`);
+  await write(`${CORTEX}/cpu/profile.txt`, 'balanced');
+  await apply('cpu/apply.sh');
+  await apply('gpu/apply.sh');
+  const s0 = document.getElementById('cpu-policy0-max');
+  const s1 = document.getElementById('cpu-policy1-max');
+  if (s0) s0.value = '1800';
+  if (s1) s1.value = '2200';
+  await loadCpu();
+  toast('CPU reset to balanced');
+}
+window.resetCpu = resetCpu;
+
+/* ── GPU / render ── */
+function mod_gpu_pickRender(el) {
+  document.querySelectorAll('#gpu-render-select .select-option').forEach((o) => o.classList.remove('selected'));
+  el.classList.add('selected');
+  txt('gpu-render-selected-label', el.dataset.label);
+  txt('gpu-render-selected-sub', el.dataset.sub);
+  document.getElementById('gpu-render-select')?.classList.remove('open');
+}
+window.mod_gpu_pickRender = mod_gpu_pickRender;
+
+async function loadGpu() {
+  const [render, arch, vk, gov, cur, max] = await batched([
+    `cat "${CORTEX}/display/render.txt" 2>/dev/null`,
+    `getprop ro.hardware.egl 2>/dev/null; getprop ro.hardware.vulkan 2>/dev/null; getprop ro.hardware.gpu 2>/dev/null`,
+    `getprop ro.opengles.version 2>/dev/null`,
+    `cat /sys/class/misc/mali0/device/devfreq/mali0/governor 2>/dev/null || cat /sys/kernel/gpu/gpu_governor 2>/dev/null`,
+    `cat /sys/class/misc/mali0/device/devfreq/mali0/cur_freq 2>/dev/null || cat /sys/kernel/gpu/gpu_cur_freq 2>/dev/null`,
+    `cat /sys/class/misc/mali0/device/devfreq/mali0/max_freq 2>/dev/null || cat /sys/kernel/gpu/gpu_max_freq 2>/dev/null`,
+  ]);
+  const opt = document.querySelector(`#gpu-render-select .select-option[data-render="${render || 'skiavk'}"]`);
+  if (opt) mod_gpu_pickRender(opt);
+  const archName = (arch || '').split(/\n/).map((s) => s.trim()).filter(Boolean)[0] || 'Unknown GPU';
+  txt('gpu-arch', archName);
+  txt('gpu-vk', vk || '—');
+  txt('gpu-gov', gov || '—');
+  const curMhz = parseInt(cur, 10);
+  const maxMhz = parseInt(max, 10);
+  const curShow = Number.isFinite(curMhz) ? Math.round(curMhz / 1000000) : null;
+  const maxShow = Number.isFinite(maxMhz) ? Math.round(maxMhz / 1000000) : null;
+  txt('gpu-freq-lbl', curShow && maxShow ? `${curShow} MHz / ${maxShow} MHz max` : '—');
+  const fill = document.getElementById('gpu-freq-fill');
+  if (fill && curShow && maxShow && maxShow > 0) fill.style.width = Math.min(100, Math.round((curShow / maxShow) * 100)) + '%';
+}
+
+async function resetGpu() {
+  await write(`${CORTEX}/display/render.txt`, 'skiavk');
+  await apply('display/apply.sh');
+  await loadGpu();
+  toast('Render reset to SkiaVK');
+}
+window.resetGpu = resetGpu;
+
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'gpu-apply-btn') {
+    const selected = document.querySelector('#gpu-render-select .select-option.selected');
+    const key = selected?.dataset.render || 'skiavk';
+    const btn = e.target;
+    btn.textContent = 'Applying…';
+    write(`${CORTEX}/display/render.txt`, key).then(() => apply('display/apply.sh')).then(() => {
+      btn.textContent = 'Applied ✓';
+      setTimeout(() => { btn.textContent = 'Apply'; }, 1400);
+      toast('Render: ' + key);
+      txt('home-sub-render', (RENDER_LABELS[key] || [key])[0]);
+    });
+  }
+});
+
+/* ── RAM ── */
+async function loadRam() {
+  const [mode, size, mem, zram] = await batched([
+    `cat "${CORTEX}/ram/mode.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ram/zram_size.txt" 2>/dev/null`,
+    `awk '/MemTotal|MemAvailable/{print $2}' /proc/meminfo`,
+    `awk '/SwapTotal|SwapFree/{print $2}' /proc/meminfo`,
+  ]);
+  const uiMode = mode === 'memory_saver' ? 'saver' : (mode || 'balanced');
+  document.querySelectorAll('#panel-ram .mode-card').forEach((c) => c.classList.toggle('active', c.dataset.mode === uiMode));
+  document.querySelectorAll('#ram-size-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.size === (size || '2')));
+  const memParts = (mem || '').split(/\n/).map((n) => parseInt(n, 10)).filter(Number.isFinite);
+  if (memParts.length >= 2) {
+    const totalGb = memParts[0] / 1024 / 1024;
+    const availGb = memParts[1] / 1024 / 1024;
+    const usedGb = Math.max(0, totalGb - availGb);
+    txt('ram-phys-txt', `${usedGb.toFixed(1)} / ${totalGb.toFixed(1)} GB`);
+    const bar = document.getElementById('ram-phys-bar');
+    if (bar && totalGb > 0) bar.style.width = Math.min(100, Math.round((usedGb / totalGb) * 100)) + '%';
+  }
+  const zParts = (zram || '').split(/\n/).map((n) => parseInt(n, 10)).filter(Number.isFinite);
+  if (zParts.length >= 2 && zParts[0] > 0) {
+    const totalMb = zParts[0] / 1024;
+    const freeMb = zParts[1] / 1024;
+    const usedMb = Math.max(0, totalMb - freeMb);
+    txt('ram-zram-txt', `${Math.round(usedMb)} / ${Math.round(totalMb)} MB`);
+    const zbar = document.getElementById('ram-zram-bar');
+    if (zbar) zbar.style.width = Math.min(100, Math.round((usedMb / totalMb) * 100)) + '%';
+  } else {
+    txt('ram-zram-txt', 'Off');
+    const zbar = document.getElementById('ram-zram-bar');
+    if (zbar) zbar.style.width = '0%';
+  }
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'ram-apply-btn') {
+    const modeCard = document.querySelector('#panel-ram .mode-card.active');
+    const sizeChip = document.querySelector('#ram-size-chips .chip.active');
+    const uiMode = modeCard?.dataset.mode || 'balanced';
+    const mode = uiMode === 'saver' ? 'memory_saver' : uiMode;
+    const size = sizeChip?.dataset.size || '2';
+    const btn = e.target;
+    btn.textContent = 'Applying…';
+    se(`echo '${mode}' > "${CORTEX}/ram/mode.txt"; echo '${size}' > "${CORTEX}/ram/zram_size.txt"; sh "${CORTEX}/ram/apply.sh"`).then(() => {
+      btn.textContent = 'Applied ✓';
+      setTimeout(() => { btn.textContent = 'Apply RAM Settings'; }, 1600);
+      toast('RAM: ' + mode + ' · ' + size + ' GB');
+    });
+  }
+});
+
+window.dropCaches = async () => {
+  await se('sync; echo 3 > /proc/sys/vm/drop_caches');
+  toast('Caches dropped');
+};
+window.trimApps = async () => {
+  await se('cmd activity send-trim-memory 0 COMPLETE 2>/dev/null; am send-trim-memory 0 2>/dev/null');
+  toast('Trim requested');
+};
+
+/* ── Storage ── */
+async function loadStorage() {
+  const df = await se('df -k /data 2>/dev/null | tail -1', '');
+  const p = df.trim().split(/\s+/);
+  if (p.length >= 4) {
+    const total = (parseInt(p[1], 10) / 1024 / 1024).toFixed(1);
+    const used = (parseInt(p[2], 10) / 1024 / 1024).toFixed(1);
+    const avail = (parseInt(p[3], 10) / 1024 / 1024).toFixed(1);
+    const pct = parseInt(p[4], 10) || 0;
+    txt('storage-storage-txt', `${used} / ${total} GB`);
+    const bar = document.getElementById('storage-storage-bar');
+    if (bar) bar.style.width = pct + '%';
+    txt('home-sub-storage', `${p[4]} used · ${avail} GB free`);
+  }
+  const last = await se(`cat "${CORTEX}/storage/last_freed_kb.txt"`, '');
+  if (last) {
+    const kb = parseInt(last, 10);
+    if (Number.isFinite(kb) && kb > 0) {
+      const el = document.getElementById('storage-freed-amount');
+      if (el) el.textContent = kb > 1024 * 1024 ? (kb / 1024 / 1024).toFixed(1) + ' GB' : Math.round(kb / 1024) + ' MB';
+    }
+  }
+}
+
+async function mod_storage_runCleanup() {
+  const btn = document.getElementById('storage-clean-btn');
+  const icon = document.getElementById('storage-clean-icon');
+  const label = document.getElementById('storage-clean-label');
+  if (btn?.classList.contains('busy')) return;
+  btn?.classList.add('busy');
+  if (label) label.textContent = 'Cleaning…';
+  if (icon) {
+    icon.classList.remove('broom');
+    icon.classList.add('spin');
+  }
+  const before = await se(`df -k /data | tail -1 | awk '{print $4}'`, '0');
+  await se(`sh "${CORTEX}/storage/clean.sh"`);
+  const after = await se(`df -k /data | tail -1 | awk '{print $4}'`, before);
+  const freedKb = Math.max(0, parseInt(after, 10) - parseInt(before, 10));
+  await write(`${CORTEX}/storage/last_freed_kb.txt`, String(freedKb));
+  const freed = document.getElementById('storage-freed-amount');
+  if (freed) freed.textContent = freedKb > 1024 ? (freedKb / 1024).toFixed(1) + ' MB' : freedKb + ' KB';
+  const when = document.getElementById('storage-freed-when');
+  if (when) when.textContent = 'just now';
+  btn?.classList.remove('busy');
+  if (label) label.textContent = 'Clear App Caches';
+  if (icon) {
+    icon.classList.remove('spin');
+    icon.classList.add('broom');
+  }
+  toast(freedKb > 0 ? `Freed ${Math.round(freedKb / 1024)} MB` : 'Cleanup finished');
+  loadStorage();
+}
+window.mod_storage_runCleanup = mod_storage_runCleanup;
+
+/* ── Battery ── */
+function mod_battery_toggleBatt() {
+  const t = document.getElementById('battery-tog-batt');
+  t.classList.toggle('on');
+  const cfg = document.getElementById('battery-batt-config');
+  if (cfg) cfg.classList.toggle('open', isOn(t));
+}
+window.mod_battery_toggleBatt = mod_battery_toggleBatt;
+
+function mod_battery_setLimit(el) {
+  document.querySelectorAll('#battery-pct-chips .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+}
+window.mod_battery_setLimit = mod_battery_setLimit;
+
+async function loadBattery() {
+  const [en, pct, cap] = await batched([
+    `cat "${CORTEX}/battery/limit_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/battery/limit_pct.txt" 2>/dev/null`,
+    `cat /sys/class/power_supply/battery/capacity 2>/dev/null`,
+  ]);
+  setOn(document.getElementById('battery-tog-batt'), en === 'on');
+  document.querySelectorAll('#battery-pct-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.pct === (pct || '80')));
+  txt('battery-batt-pct', (cap || '—') + '%');
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest?.('#panel-battery .btn.primary');
+  if (!btn) return;
+  const en = isOn(document.getElementById('battery-tog-batt')) ? 'on' : 'off';
+  const chip = document.querySelector('#battery-pct-chips .chip.active');
+  const pct = chip?.dataset.pct || '80';
+  btn.textContent = 'Applying…';
+  se(`echo '${en}' > "${CORTEX}/battery/limit_enabled.txt"; echo '${pct}' > "${CORTEX}/battery/limit_pct.txt"; sh "${CORTEX}/battery/apply.sh"`).then(() => {
+    btn.textContent = 'Applied ✓';
+    setTimeout(() => { btn.textContent = 'Apply Battery Settings'; }, 1400);
+    toast(en === 'on' ? `Charge limit ${pct}%` : 'Charge limit off');
+  });
+});
+
+/* ── Network ── */
+const CC_INFO = {
+  bbr: "Google's algorithm — models the actual network path instead of reacting to packet loss.",
+  westwood: 'Loss-based estimator that copes better with wireless packet loss than Cubic.',
+  cubic: 'Android default. Fine for most connections; not the lowest-latency pick.',
+  reno: 'Legacy TCP. Only useful as a last-resort fallback.',
+};
+
+function toggleNet(el) {
+  el.classList.toggle('on');
+}
+window.toggleNet = toggleNet;
+
+function mod_network_setCC(el) {
+  sdPickChip(el);
+  txt('network-cc-info', CC_INFO[el.dataset.cc] || '');
+}
+window.mod_network_setCC = mod_network_setCC;
+
+function mod_network_setDns(el) {
+  sdPickChip(el);
+  const cfg = document.getElementById('network-dns-config');
+  if (cfg) cfg.style.display = el.dataset.dns === 'off' ? 'none' : 'block';
+}
+window.mod_network_setDns = mod_network_setDns;
+
+function togglePingStab(el) {
+  if (!el) el = document.getElementById('network-tog-pingstab');
+  el.classList.toggle('on');
+  const on = isOn(el);
+  write(`${CORTEX}/net/ping_stabilizer_enabled.txt`, on ? 'on' : 'off');
+  txt('network-ping-status', on ? 'Armed — applies when a selected game launches.' : 'Not active — enable above, then launch a game.');
+}
+window.togglePingStab = togglePingStab;
+
+async function loadNet() {
+  const [st, cc, dns, d1, d2, ping] = await batched([
+    `cat "${CORTEX}/net/status.txt" 2>/dev/null`,
+    `cat "${CORTEX}/net/congestion.txt" 2>/dev/null`,
+    `cat "${CORTEX}/net/dns_mode.txt" 2>/dev/null`,
+    `cat "${CORTEX}/net/dns1.txt" 2>/dev/null`,
+    `cat "${CORTEX}/net/dns2.txt" 2>/dev/null`,
+    `cat "${CORTEX}/net/ping_stabilizer_enabled.txt" 2>/dev/null`,
+  ]);
+  setOn(document.getElementById('network-tog-net'), st === 'on');
+  document.querySelectorAll('#network-cc-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.cc === (cc || 'bbr')));
+  txt('network-cc-info', CC_INFO[cc] || CC_INFO.bbr);
+  const dnsChip = document.querySelector(`#network-dns-chips .chip[data-dns="${dns || 'off'}"]`);
+  if (dnsChip) mod_network_setDns(dnsChip);
+  const i1 = document.getElementById('network-dns1');
+  const i2 = document.getElementById('network-dns2');
+  if (i1) i1.value = d1 || '1.1.1.1';
+  if (i2) i2.value = d2 || '1.0.0.1';
+  setOn(document.getElementById('network-tog-pingstab'), ping === 'on');
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest?.('#panel-network .btn.primary');
+  if (!btn) return;
+  const on = isOn(document.getElementById('network-tog-net')) ? 'on' : 'off';
+  const cc = document.querySelector('#network-cc-chips .chip.active')?.dataset.cc || 'bbr';
+  const dns = document.querySelector('#network-dns-chips .chip.active')?.dataset.dns || 'off';
+  const d1 = document.getElementById('network-dns1')?.value || '1.1.1.1';
+  const d2 = document.getElementById('network-dns2')?.value || '1.0.0.1';
+  btn.textContent = 'Applying…';
+  se(`echo '${on}' > "${CORTEX}/net/status.txt"; echo '${cc}' > "${CORTEX}/net/congestion.txt"; echo '${dns}' > "${CORTEX}/net/dns_mode.txt"; echo '${shEsc(d1)}' > "${CORTEX}/net/dns1.txt"; echo '${shEsc(d2)}' > "${CORTEX}/net/dns2.txt"; sh "${CORTEX}/net/apply.sh"`).then(() => {
+    btn.textContent = 'Applied ✓';
+    setTimeout(() => { btn.textContent = 'Apply Network Settings'; }, 1600);
+    toast('Network: ' + cc);
+  });
+});
+
+/* ── Kill BG ── */
+function mod_killbg_toggleKill() {
+  const t = document.getElementById('killbg-tog-killbg');
+  t.classList.toggle('on');
+  write(`${CORTEX}/games/kill_bg_enabled.txt`, isOn(t) ? 'on' : 'off');
+  toast('Kill BG: ' + (isOn(t) ? 'on' : 'off'));
+}
+window.mod_killbg_toggleKill = mod_killbg_toggleKill;
+
+async function loadKillBg() {
+  const en = await se(`cat "${CORTEX}/games/kill_bg_enabled.txt"`, 'off');
+  setOn(document.getElementById('killbg-tog-killbg'), en === 'on');
+  const last = await se(`cat "${CORTEX}/games/kill_bg_last.txt" 2>/dev/null`, '');
+  const box = document.getElementById('killbg-kill-status');
+  if (box) {
+    if (!last) {
+      box.textContent = 'No launch report yet — runs when a selected game starts.';
+      box.classList.remove('active');
+    } else {
+      const [pkg, killed] = last.split('|');
+      box.textContent = `${(pkg || 'game').split('.').pop()} launched · ${killed || '0'} apps stopped`;
+      box.classList.add('active');
+    }
+  }
+  const logBox = document.getElementById('killbg-log-box');
+  if (logBox) {
+    const log = await se(`grep KILL_BG "${MOD}/boot.log" 2>/dev/null | tail -8`, '');
+    const lines = log.split(/\n/).filter(Boolean);
+    logBox.innerHTML = lines.length
+      ? lines.map((l) => `<div class="log-entry"><span class="log-app">${l.replace(/</g, '')}</span></div>`).join('')
+      : '<div class="log-entry" style="color:rgba(255,255,255,.4);font-size:11px;border:none;">No session yet</div>';
+  }
+}
+
+/* ── Refresh / FPS ── */
+function lockFile(mode) {
+  return mode === 'always' ? 'locked' : mode;
+}
+function lockUi(file) {
+  return file === 'locked' ? 'always' : (file || 'off');
+}
+
+function mod_refresh_setFPS(el, hz) {
+  document.querySelectorAll('#refresh-fps-chips .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+  txt('refresh-rr-live-hz', hz + ' Hz');
+  write(`${CORTEX}/display/fps.txt`, String(hz)).then(() => se(`sh "${CORTEX}/fps/engine.sh" "${hz}" 2>/dev/null`));
+  txt('home-sub-fps', hz + ' Hz');
+  toast('Refresh: ' + hz + 'Hz');
+}
+window.mod_refresh_setFPS = mod_refresh_setFPS;
+
+function mod_refresh_setLock(el, mode) {
+  document.querySelectorAll('#panel-refresh .lock-card').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+  const file = lockFile(mode);
+  write(`${CORTEX}/display/rr_lock.txt`, file).then(() => apply('display/apply.sh'));
+  txt('refresh-rr-live-status', mode === 'always' ? 'Hard Lock' : mode === 'game' ? 'Game Lock' : 'Free');
+  toast('RR lock: ' + mode);
+}
+window.mod_refresh_setLock = mod_refresh_setLock;
+
+function mod_refresh_setFPSLock(el, val) {
+  document.querySelectorAll('#refresh-fpslk-chips .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+  write(`${CORTEX}/display/fps_lock_game.txt`, val);
+  const badge = document.getElementById('refresh-fpslk-badge');
+  const info = document.getElementById('refresh-fpslk-info');
+  if (val === 'off') {
+    if (badge) badge.textContent = 'OFF';
+    if (info) info.style.display = 'none';
+  } else {
+    if (badge) badge.textContent = val + ' FPS';
+    if (info) info.style.display = 'block';
+    txt('refresh-fpslk-info-txt', `Capping at ${val} FPS in-game. Re-applied every 2s.`);
+  }
+  toast('FPS lock: ' + val);
+}
+window.mod_refresh_setFPSLock = mod_refresh_setFPSLock;
+
+async function loadRefresh() {
+  const [fps, lock, fpslk] = await batched([
+    `cat "${CORTEX}/display/fps.txt" 2>/dev/null`,
+    `cat "${CORTEX}/display/rr_lock.txt" 2>/dev/null`,
+    `cat "${CORTEX}/display/fps_lock_game.txt" 2>/dev/null`,
+  ]);
+  document.querySelectorAll('#refresh-fps-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.fps === (fps || '90')));
+  txt('refresh-rr-live-hz', (fps || '90') + ' Hz');
+  const ui = lockUi(lock);
+  document.querySelectorAll('#panel-refresh .lock-card').forEach((c) => c.classList.toggle('active', c.dataset.mode === ui));
+  document.querySelectorAll('#refresh-fpslk-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.fpslk === (fpslk || 'off')));
+}
+
+/* ── Render scale ── */
+function mod_renderscale_pickRes(el) {
+  document.querySelectorAll('#panel-renderscale .res-card').forEach((c) => {
+    c.classList.remove('active');
+    c.querySelector('.badge-active')?.remove();
+  });
+  el.classList.add('active');
+  const name = el.querySelector('.res-name');
+  if (name && !name.querySelector('.badge-active')) {
+    const badge = document.createElement('span');
+    badge.className = 'badge-active';
+    badge.textContent = 'ACTIVE';
+    name.appendChild(badge);
+  }
+  const res = el.dataset.res;
+  write(`${CORTEX}/display/resolution.txt`, res);
+  txt('home-sub-res', res === 'native' ? 'Native — Full' : Math.round(parseFloat(res) * 100) + '%');
+  toast('Render scale: ' + (res === 'native' ? 'Native' : res));
+}
+window.mod_renderscale_pickRes = mod_renderscale_pickRes;
+
+async function loadRes() {
+  const res = await se(`cat "${CORTEX}/display/resolution.txt"`, 'native');
+  const card = document.querySelector(`#panel-renderscale .res-card[data-res="${res}"]`);
+  if (card) {
+    document.querySelectorAll('#panel-renderscale .res-card').forEach((c) => {
+      c.classList.remove('active');
+      c.querySelector('.badge-active')?.remove();
+    });
+    card.classList.add('active');
+  }
+}
+
+/* ── Anim ── */
+function mod_animscale_pick(el) {
+  document.querySelectorAll('#animscale-anim-chips .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+  const val = el.dataset.anim;
+  write(`${CORTEX}/display/anim_scale.txt`, val);
+  se(`settings put global window_animation_scale ${val}; settings put global transition_animation_scale ${val}; settings put global animator_duration_scale ${val}`);
+  txt('home-sub-anim', val + 'x');
+  toast('Anim: ' + val + 'x');
+}
+window.mod_animscale_pick = mod_animscale_pick;
+
+async function loadAnim() {
+  const val = await se(`cat "${CORTEX}/display/anim_scale.txt"`, '0.5');
+  document.querySelectorAll('#animscale-anim-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.anim === val));
+}
+
+/* ── Touch ── */
+function mod_touch_pick(el, group) {
+  const id = group.startsWith('touch-') ? group : 'touch-' + group;
+  document.querySelectorAll('#' + id + ' .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+}
+window.mod_touch_pick = mod_touch_pick;
+
+function toggleInputBooster(el) {
+  el.classList.toggle('on');
+  write(`${CORTEX}/touch/input_booster.txt`, isOn(el) ? 'on' : 'off').then(() => apply('touch/apply.sh'));
+}
+window.toggleInputBooster = toggleInputBooster;
+
+function toggleNoiseFilter(el) {
+  el.classList.toggle('on');
+  write(`${CORTEX}/touch/noise_filter.txt`, isOn(el) ? 'on' : 'off').then(() => apply('touch/apply.sh'));
+}
+window.toggleNoiseFilter = toggleNoiseFilter;
+
+function debounceTouchWrite() {
+  clearTimeout(_touchTimer);
+  _touchTimer = setTimeout(() => {
+    const swipe = document.getElementById('touch-sl-swipe')?.value || '8';
+    const lp = document.getElementById('touch-sl-lp')?.value || '400';
+    se(`echo '${swipe}' > "${CORTEX}/touch/swipe_px.txt"; echo '${lp}' > "${CORTEX}/touch/lp_timeout.txt"; sh "${CORTEX}/touch/apply.sh"`);
+  }, 250);
+}
+
+async function loadTouch() {
+  const [st, ib, nf, rr, ts, swipe, lp] = await batched([
+    `cat "${CORTEX}/touch/status.txt" 2>/dev/null`,
+    `cat "${CORTEX}/touch/input_booster.txt" 2>/dev/null`,
+    `cat "${CORTEX}/touch/noise_filter.txt" 2>/dev/null`,
+    `cat "${CORTEX}/touch/report_rate.txt" 2>/dev/null`,
+    `cat "${CORTEX}/touch/tap_sens.txt" 2>/dev/null`,
+    `cat "${CORTEX}/touch/swipe_px.txt" 2>/dev/null`,
+    `cat "${CORTEX}/touch/lp_timeout.txt" 2>/dev/null`,
+  ]);
+  setOn(document.getElementById('touch-tog-ib'), ib !== 'off');
+  setOn(document.getElementById('touch-tog-nf'), nf === 'on');
+  document.querySelectorAll('#touch-rr-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.rr === (rr || '240')));
+  document.querySelectorAll('#touch-ts-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.ts === (ts || 'medium')));
+  const sEl = document.getElementById('touch-sl-swipe');
+  const lEl = document.getElementById('touch-sl-lp');
+  if (sEl) sEl.value = swipe || '8';
+  if (lEl) lEl.value = lp || '400';
+  void st;
+}
+
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'touch-sl-swipe' || e.target.id === 'touch-sl-lp') debounceTouchWrite();
+});
+
+document.addEventListener('click', (e) => {
+  if (e.target.id !== 'touch-apply-btn') return;
+  const rr = document.querySelector('#touch-rr-chips .chip.active')?.dataset.rr || '240';
+  const ts = document.querySelector('#touch-ts-chips .chip.active')?.dataset.ts || 'medium';
+  const btn = e.target;
+  btn.textContent = 'Applying…';
+  se(`echo '${rr}' > "${CORTEX}/touch/report_rate.txt"; echo '${ts}' > "${CORTEX}/touch/tap_sens.txt"; sh "${CORTEX}/touch/apply.sh"`).then(() => {
+    btn.textContent = 'Applied ✓';
+    setTimeout(() => { btn.textContent = 'Apply Touch Settings'; }, 1600);
+    toast('Touch: ' + rr + ' Hz');
+  });
+});
+
+/* ── Notify ── */
+function mod_notify_toggleMaster() {
+  const master = document.getElementById('notify-tog-master');
+  master.classList.toggle('on');
+  const on = isOn(master);
+  const cats = document.getElementById('notify-categories');
+  if (cats) {
+    cats.style.opacity = on ? '1' : '.4';
+    cats.style.pointerEvents = on ? 'auto' : 'none';
+  }
+  write(`${CORTEX}/notify/enabled.txt`, on ? 'on' : 'off');
+}
+window.mod_notify_toggleMaster = mod_notify_toggleMaster;
+
+function toggleNotifyCat(el) {
+  el.classList.toggle('on');
+  const file = el.dataset.file;
+  if (file) write(`${CORTEX}/notify/${file}.txt`, isOn(el) ? 'on' : 'off');
+}
+window.toggleNotifyCat = toggleNotifyCat;
+
+async function loadNotify() {
+  const [master, launch, exit, thermal, spoof] = await batched([
+    `cat "${CORTEX}/notify/enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/notify/game_launch.txt" 2>/dev/null`,
+    `cat "${CORTEX}/notify/game_exit.txt" 2>/dev/null`,
+    `cat "${CORTEX}/notify/thermal_override.txt" 2>/dev/null`,
+    `cat "${CORTEX}/notify/spoof_active.txt" 2>/dev/null`,
+  ]);
+  setOn(document.getElementById('notify-tog-master'), master !== 'off');
+  const map = { game_launch: launch, game_exit: exit, thermal_override: thermal, spoof_active: spoof };
+  document.querySelectorAll('#notify-categories .cat-tog').forEach((el) => {
+    setOn(el, map[el.dataset.file] !== 'off');
+  });
+}
+
+/* ── Audio ── */
+function toggleAudioLatency(el) {
+  el.classList.toggle('on');
+  const on = isOn(el);
+  write(`${CORTEX}/audio/enabled.txt`, on ? 'on' : 'off');
+  txt('audio-live-state', on || isOn(document.getElementById('audio-tog-bt')) ? 'Armed' : 'Off');
+  txt('home-sub-audio', on ? 'On — in-game props' : 'Off');
+  toast('Audio latency: ' + (on ? 'on' : 'off'));
+}
+window.toggleAudioLatency = toggleAudioLatency;
+
+function toggleBtLowLatency(el) {
+  el.classList.toggle('on');
+  write(`${CORTEX}/audio/bt_lowlat.txt`, isOn(el) ? 'on' : 'off');
+  toast('BT low-latency: ' + (isOn(el) ? 'on' : 'off'));
+}
+window.toggleBtLowLatency = toggleBtLowLatency;
+
+async function loadAudio() {
+  const [en, bt, verify] = await batched([
+    `cat "${CORTEX}/audio/enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/audio/bt_lowlat.txt" 2>/dev/null`,
+    `cat "${CORTEX}/audio/verify.txt" 2>/dev/null`,
+  ]);
+  setOn(document.getElementById('audio-tog-lat'), en === 'on');
+  setOn(document.getElementById('audio-tog-bt'), bt === 'on');
+  txt('audio-live-state', en === 'on' ? 'Armed' : 'Off');
+  const rows = document.getElementById('audio-verify-rows');
+  const [ok, total] = (verify || '0|4').split('|');
+  const labels = [
+    'audio.deep_buffer.media = false',
+    'vendor.audio.mmap.enable = true',
+    'persist.vendor.audio.lowlatency.enable = true',
+    'af.fast_track_multiplier = 1',
+  ];
+  if (rows) {
+    rows.innerHTML = labels.map((lab, i) => {
+      const stuck = parseInt(ok, 10) > i;
+      return `<div class="stat-row"><span class="stat-label">${lab}</span><span class="stat-val" style="color:var(--${stuck ? 'ok' : 'warn'})">${stuck ? 'ok' : '—'}</span></div>`;
+    }).join('');
+  }
+  txt('audio-verify-summary', verify ? `${ok}/${total || '4'} props confirmed stuck after last game launch` : 'No verify yet — launches a game after enabling to populate this.');
+}
+
+/* ── Engine ── */
+function mod_engine_toggleEngine() {
+  const t = document.getElementById('engine-tog-eng');
+  t.classList.toggle('on');
+  write(`${CORTEX}/ai/enabled.txt`, isOn(t) ? 'on' : 'off');
+  toast('Engine: ' + (isOn(t) ? 'on' : 'off'));
+}
+window.mod_engine_toggleEngine = mod_engine_toggleEngine;
+
+async function loadEngine() {
+  const [en, st, ov] = await batched([
+    `cat "${CORTEX}/ai/enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/status.txt" 2>/dev/null`,
+    `cat "${CORTEX}/ai/override_active.txt" 2>/dev/null`,
+  ]);
+  setOn(document.getElementById('engine-tog-eng'), en !== 'off');
+  const p = (st || '').split('|');
+  txt('engine-stat-temp', p[0] ? p[0] + '°C' : '—');
+  txt('engine-stat-batt', p[1] ? p[1] + '%' : '—');
+  txt('engine-stat-ram', p[2] ? p[2] + ' MB' : '—');
+  txt('engine-stat-gov', p[3] || '—');
+  txt('engine-stat-profile', p[4] || '—');
+  const banner = document.getElementById('engine-override-banner');
+  if (banner) banner.style.display = ov === 'on' ? 'block' : 'none';
+}
+
+/* ── Thermal ── */
+function mod_thermal_toggleThermal() {
+  const t = document.getElementById('thermal-tog-th');
+  t.classList.toggle('on');
+  const armed = isOn(t);
+  write(`${CORTEX}/thermal/status.txt`, armed ? 'disabled' : 'enabled');
+  txt('thermal-th-state', armed ? 'Armed' : 'Off');
+  const el = document.getElementById('thermal-th-state');
+  if (el) el.style.color = armed ? 'var(--ok)' : 'var(--danger)';
+}
+window.mod_thermal_toggleThermal = mod_thermal_toggleThermal;
+
+function mod_thermal_pickMode(el) {
+  document.querySelectorAll('#thermal-mode-chips .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+  const isAdv = el.dataset.mode === 'advanced';
+  const lite = document.getElementById('thermal-lite-info');
+  const adv = document.getElementById('thermal-advanced-info');
+  if (lite) lite.style.display = isAdv ? 'none' : 'block';
+  if (adv) adv.style.display = isAdv ? 'block' : 'none';
+  write(`${CORTEX}/thermal/mode.txt`, isAdv ? 'extreme' : 'lite');
+}
+window.mod_thermal_pickMode = mod_thermal_pickMode;
+
+async function loadThermal() {
+  const [st, mode, temp] = await batched([
+    `cat "${CORTEX}/thermal/status.txt" 2>/dev/null`,
+    `cat "${CORTEX}/thermal/mode.txt" 2>/dev/null`,
+    `cat /sys/class/power_supply/battery/temp 2>/dev/null`,
+  ]);
+  const armed = st === 'disabled';
+  setOn(document.getElementById('thermal-tog-th'), armed);
+  txt('thermal-th-state', armed ? 'Armed' : 'Off');
+  const ui = mode === 'extreme' ? 'advanced' : 'lite';
+  document.querySelectorAll('#thermal-mode-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.mode === ui));
+  const tRaw = parseInt(temp, 10);
+  if (Number.isFinite(tRaw)) txt('thermal-real-temp', (tRaw / 10).toFixed(1) + '°C');
+}
+
+/* ── Spoof ── */
+function mod_devicespoof_toggleMaster() {
+  const t = document.getElementById('devicespoof-tog-master');
+  t.classList.toggle('on');
+  const on = isOn(t);
+  txt('devicespoof-spoof-state', on ? 'Active' : 'Off');
+  const cfg = document.getElementById('devicespoof-config-section');
+  if (cfg) {
+    cfg.style.opacity = on ? '1' : '.4';
+    cfg.style.pointerEvents = on ? 'auto' : 'none';
+  }
+  write(`${CORTEX}/games/spoof_master.txt`, on ? 'on' : 'off').then(() => {
+    if (on) {
+      se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"; pkill -f "${MOD}/controller" 2>/dev/null; sleep 1; nohup "${MOD}/controller" >/dev/null 2>&1 &`);
+    } else {
+      se(`pkill -f "${MOD}/controller" 2>/dev/null; sh "${CORTEX}/games/spoof.sh"`);
+    }
+  });
+  toast('Spoof: ' + (on ? 'on' : 'off'));
+}
+window.mod_devicespoof_toggleMaster = mod_devicespoof_toggleMaster;
+
+function mod_devicespoof_pickGame(el) {
+  document.querySelectorAll('#devicespoof-game-chips .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+  _spoofPkg = el.dataset.pkg || '';
+  txt('devicespoof-selected-game-name', el.textContent.trim());
+}
+window.mod_devicespoof_pickGame = mod_devicespoof_pickGame;
+
+function mod_devicespoof_toggleCpu() {
+  const t = document.getElementById('devicespoof-tog-cpu');
+  t.classList.toggle('on');
+  const picker = document.getElementById('devicespoof-cpu-picker');
+  if (picker) picker.style.display = isOn(t) ? 'block' : 'none';
+}
+window.mod_devicespoof_toggleCpu = mod_devicespoof_toggleCpu;
+
+async function loadSpoof() {
+  const [master, selected, assigns] = await batched([
+    `cat "${CORTEX}/games/spoof_master.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/selected.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/spoof_assignments.txt" 2>/dev/null`,
+  ]);
+  const on = master === 'on';
+  setOn(document.getElementById('devicespoof-tog-master'), on);
+  txt('devicespoof-spoof-state', on ? 'Active' : 'Off');
+  const cfg = document.getElementById('devicespoof-config-section');
+  if (cfg) {
+    cfg.style.opacity = on ? '1' : '.4';
+    cfg.style.pointerEvents = on ? 'auto' : 'none';
+  }
+  const chips = document.getElementById('devicespoof-game-chips');
+  const pkgs = (selected || '').split(/\n/).map((s) => s.trim()).filter(Boolean);
+  if (chips) {
+    chips.innerHTML = pkgs.length
+      ? pkgs.map((pkg, i) => `<div class="chip${i === 0 ? ' active' : ''}" data-pkg="${pkg}" onclick="mod_devicespoof_pickGame(this)">${pkg.split('.').pop()}</div>`).join('')
+      : '<div class="chip">No games selected</div>';
+    if (pkgs[0]) {
+      _spoofPkg = pkgs[0];
+      txt('devicespoof-selected-game-name', pkgs[0].split('.').pop());
+    }
+  }
+  const sel = document.getElementById('devicespoof-device-select');
+  if (sel && !sel.dataset.wired) {
+    sel.innerHTML = SPOOF_DEVICES.map((d) => `<option value="${d.id}">${d.name}</option>`).join('');
+    sel.dataset.wired = '1';
+    sel.addEventListener('change', assignSpoofFromSelect);
+  }
+  const map = {};
+  (assigns || '').split(/\n/).forEach((line) => {
+    const [pkg, dev] = line.split('|');
+    if (pkg && dev) map[pkg.trim()] = dev.trim();
+  });
+  if (sel && _spoofPkg && map[_spoofPkg]) sel.value = map[_spoofPkg];
+
+  const cpuSel = document.querySelector('#devicespoof-cpu-picker select');
+  if (cpuSel && !cpuSel.dataset.wired) {
+    cpuSel.innerHTML = CPU_PROFILES.map((p) => `<option value="${p.key}">${p.name}</option>`).join('');
+    cpuSel.dataset.wired = '1';
+  }
+}
+
+async function assignSpoofFromSelect() {
+  if (!_spoofPkg) return;
+  const deviceId = document.getElementById('devicespoof-device-select')?.value || 'off';
+  const raw = await se(`cat "${CORTEX}/games/spoof_assignments.txt" 2>/dev/null`, '');
+  const lines = raw.split(/\n/).filter((l) => l.trim() && !l.startsWith(_spoofPkg + '|'));
+  if (deviceId !== 'off') lines.push(_spoofPkg + '|' + deviceId);
+  await writeLines(`${CORTEX}/games/spoof_assignments.txt`, lines);
+  await se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"`);
+  toast(deviceId === 'off' ? 'Spoof removed' : `${_spoofPkg.split('.').pop()} → ${deviceId}`);
+}
+
+/* ── Games ── */
+async function mod_games_load() {
+  const statusEl = document.getElementById('games-scan-status');
+  const listEl = document.getElementById('games-installed-list');
+  if (!sdHasBridge()) {
+    if (statusEl) statusEl.textContent = 'No root bridge — open this from KernelSU / MMRL to scan apps.';
+    return;
+  }
+  if (statusEl) statusEl.textContent = 'Scanning installed apps…';
+  const raw = await se("pm list packages -3 2>/dev/null | sed 's/^package://' | sort", '');
+  _gamesAll = raw.split(/\n/).map((s) => s.trim()).filter(Boolean);
+  const sel = await se(`cat "${CORTEX}/games/selected.txt" 2>/dev/null`, '');
+  _gamesSelected = new Set(sel.split(/\n/).map((s) => s.trim()).filter(Boolean));
+  if (statusEl) statusEl.textContent = '';
+  mod_games_renderSelected();
+}
+window.mod_games_load = mod_games_load;
+
+function mod_games_renderSelected() {
+  const listEl = document.getElementById('games-installed-list');
+  if (!listEl) return;
+  if (_gamesSelected.size === 0) {
+    listEl.innerHTML = '<div class="empty-state">No games selected yet — search below to add some.</div>';
+    return;
+  }
+  listEl.innerHTML = Array.from(_gamesSelected).map((pkg) => `
+    <div class="game-row">
+      <div class="game-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="6"/></svg></div>
+      <div class="game-name">${pkg}</div>
+      <div class="switch on" onclick="mod_games_toggle('${pkg}', this)"></div>
+    </div>`).join('');
+}
+
+function mod_games_filterPicker(query) {
+  const resultsEl = document.getElementById('games-search-results');
+  if (!resultsEl) return;
+  if (!query || query.length < 2) { resultsEl.innerHTML = ''; return; }
+  const q = query.toLowerCase();
+  const matches = _gamesAll.filter((p) => p.toLowerCase().includes(q)).slice(0, 20);
+  resultsEl.innerHTML = matches.length
+    ? matches.map((pkg) => {
+        const on = _gamesSelected.has(pkg);
+        return `<div class="game-row"><div class="game-name">${pkg}</div><div class="switch${on ? ' on' : ''}" onclick="mod_games_toggle('${pkg}', this)"></div></div>`;
+      }).join('')
+    : '<div class="empty-state">No matching apps</div>';
+}
+window.mod_games_filterPicker = mod_games_filterPicker;
+
+async function mod_games_toggle(pkg, el) {
+  el.classList.toggle('on');
+  if (el.classList.contains('on')) _gamesSelected.add(pkg);
+  else _gamesSelected.delete(pkg);
+  await writeLines(`${CORTEX}/games/selected.txt`, Array.from(_gamesSelected));
+  mod_games_renderSelected();
+}
+window.mod_games_toggle = mod_games_toggle;
+
+/* ── Logs ── */
+async function mod_logs_refresh() {
+  const termEl = document.getElementById('logs-term');
+  if (!sdHasBridge()) {
+    if (termEl) termEl.textContent = 'No root bridge — open this from the installed module to see live logs.';
+    return;
+  }
+  if (termEl) termEl.textContent = 'Loading…';
+  const [ai, mon, ctrl, log] = await batched([
+    `pgrep -f "${CORTEX}/ai/engine.sh" 2>/dev/null`,
+    `pgrep -f "${CORTEX}/daemons/game_monitor.sh" 2>/dev/null`,
+    `pgrep -f "${MOD}/controller" 2>/dev/null`,
+    `tail -n 80 "${MOD}/boot.log" 2>/dev/null`,
+  ]);
+  txt('logs-batt-status', ai ? 'Running' : 'Not detected');
+  txt('logs-games-status', mon ? 'Running' : 'Not detected — may need reboot');
+  txt('logs-bypass-status', ctrl ? 'Controller running' : 'Controller idle');
+  document.getElementById('logs-batt-status')?.classList.toggle('ok', !!ai);
+  document.getElementById('logs-games-status')?.classList.toggle('ok', !!mon);
+  if (termEl) termEl.textContent = log || '(boot.log empty or not yet created)';
+}
+window.mod_logs_refresh = mod_logs_refresh;
+
+async function mod_logs_copy() {
+  const text = document.getElementById('logs-term')?.textContent || '';
+  try { await navigator.clipboard.writeText(text); toast('Copied'); }
+  catch (e) { toast('Clipboard unavailable'); }
+}
+window.mod_logs_copy = mod_logs_copy;
+
+async function mod_logs_clear() {
+  await se(`: > "${MOD}/boot.log"`);
+  txt('logs-term', '(cleared)');
+}
+window.mod_logs_clear = mod_logs_clear;
+
+/* ── Health / compat / conflicts ── */
+function rowHtml(title, sub, tag, ok) {
+  return `<div class="row"><div><div style="font-size:13px;font-weight:700;">${title}</div>${sub ? `<div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px;">${sub}</div>` : ''}</div><span class="tag ${ok ? 'ok' : 'warn'}">${tag}</span></div>`;
+}
+
+async function loadHealth() {
+  const list = document.getElementById('health-list');
+  if (!list) return;
+  const raw = await se(`cat "${CORTEX}/health/last.txt" 2>/dev/null`, '');
+  if (!raw) {
+    list.innerHTML = '<div class="row"><div style="font-size:13px;font-weight:700;">No health report yet</div><span class="tag ok">OK</span></div>';
+    return;
+  }
+  const lines = raw.split(/\n/).filter(Boolean);
+  list.innerHTML = lines.map((line) => {
+    const fail = /fail|error|skip|unavail/i.test(line);
+    return rowHtml(line.replace(/\|/g, ' — '), '', fail ? 'Adapted' : 'OK', !fail);
+  }).join('');
+}
+
+async function refreshHealthBanner() {
+  const raw = await se(`cat "${CORTEX}/health/last.txt" 2>/dev/null`, '');
+  const fails = raw.split(/\n/).filter((l) => /fail|error|skip|unavail/i.test(l)).length;
+  const banner = document.getElementById('home-health-banner');
+  if (!banner) return;
+  if (fails > 0) {
+    banner.style.display = 'flex';
+    txt('home-health-title', `${fails} optimization${fails === 1 ? '' : 's'} failed to apply`);
+  } else banner.style.display = 'none';
+}
+
+async function loadCompat() {
+  const list = document.getElementById('compat-list');
+  if (!list) return;
+  const raw = await se(`cat "${CORTEX}/device/capabilities.txt" 2>/dev/null; sh "${CORTEX}/device/capability_probe.sh" 2>/dev/null | tail -20`, '');
+  if (!raw) {
+    list.innerHTML = '<div class="row"><div style="font-size:13px;font-weight:700;">Probe not run yet</div><span class="tag warn">Pending</span></div>';
+    txt('home-sub-compat', 'Not probed yet');
+    return;
+  }
+  const lines = raw.split(/\n/).filter(Boolean).slice(-12);
+  list.innerHTML = lines.map((line) => {
+    const ok = /yes|ok|supported|1$/i.test(line);
+    return rowHtml(line.replace(/=/g, ': '), '', ok ? 'Supported' : 'Not exposed', ok);
+  }).join('');
+  txt('home-sub-compat', 'Probed');
+}
+
+async function loadConflicts() {
+  const list = document.getElementById('conflicts-list');
+  if (!list) return;
+  const raw = await se(`sh "${CORTEX}/device/check_conflicts.sh" 2>/dev/null`, '');
+  const lines = raw.split(/\n/).filter((l) => l.trim() && !/^\[/.test(l));
+  if (!lines.length) {
+    list.innerHTML = '<div class="row"><div style="font-size:13px;font-weight:700;">No overlapping modules found</div><span class="tag ok">Clear</span></div>';
+    return;
+  }
+  list.innerHTML = lines.map((line) => rowHtml(line, '', 'Conflict', false)).join('');
+}
+
+async function refreshConflictBanner() {
+  const raw = await se(`ls /data/adb/modules 2>/dev/null`, '');
+  const others = raw.split(/\n/).map((s) => s.trim()).filter((s) => s && s !== 'sweet_dreams' && s !== 'zygisksu' && s !== 'zygisk_lsposed');
+  const banner = document.getElementById('home-conflict-banner');
+  if (!banner) return;
+  const tuning = others.filter((n) => /perf|thermal|game|fps|kernel|magisk|fdeai|azenith|frieren/i.test(n));
+  if (tuning.length) {
+    banner.style.display = 'flex';
+    txt('home-conflict-title', `${tuning.length} other tuning module${tuning.length === 1 ? '' : 's'} detected`);
+  } else banner.style.display = 'none';
+}
+
+async function loadPreloadList() {
+  const list = document.getElementById('preload-list');
+  if (!list) return;
+  const raw = await se(`ls "${CORTEX}/games/profiles" 2>/dev/null`, '');
+  const files = raw.split(/\n/).filter((f) => f.endsWith('.txt'));
+  if (!files.length) {
+    list.innerHTML = '<div class="row"><div style="font-size:13px;font-weight:700;">No seeded profiles yet</div></div>';
+    txt('home-sub-preload', 'None');
+    return;
+  }
+  list.innerHTML = files.slice(0, 40).map((f) => {
+    const pkg = f.replace(/\.txt$/, '').replace(/-/g, '.');
+    return `<div class="row"><div style="font-size:13px;font-weight:700;">${pkg}</div><span style="font-size:11px;color:var(--lavender-pale);">profile</span></div>`;
+  }).join('');
+  txt('home-sub-preload', `${files.length} games ready`);
+}
+
+function toggleGamePreload(el) {
+  el.classList.toggle('on');
+  write(`${CORTEX}/games/preload_enabled.txt`, isOn(el) ? 'on' : 'off');
+  toast('Game preload: ' + (isOn(el) ? 'on' : 'off'));
+}
+window.toggleGamePreload = toggleGamePreload;
+
+function mod_gamepreload_setBudget(el) {
+  document.querySelectorAll('#gamepreload-budget-chips .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+  write(`${CORTEX}/games/preload_budget_mb.txt`, el.dataset.mb || '500');
+}
+window.mod_gamepreload_setBudget = mod_gamepreload_setBudget;
+
+async function loadGamePreload() {
+  const [en, budget] = await batched([
+    `cat "${CORTEX}/games/preload_enabled.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/preload_budget_mb.txt" 2>/dev/null`,
+  ]);
+  setOn(document.getElementById('gamepreload-tog-preload'), en === 'on');
+  document.querySelectorAll('#gamepreload-budget-chips .chip').forEach((c) => c.classList.toggle('active', c.dataset.mb === (budget || '500')));
+}
+
+function mod_sensor_toggleSensor() {
+  const t = document.getElementById('sensor-tog-sensor');
+  t.classList.toggle('on');
+  const on = isOn(t);
+  write(`${CORTEX}/sensor/enabled.txt`, on ? 'on' : 'off');
+  txt('sensor-sensor-state', on ? 'Armed' : 'Idle');
+  txt('sensor-sensor-status', on ? 'Will activate on next game launch' : 'Not running');
+}
+window.mod_sensor_toggleSensor = mod_sensor_toggleSensor;
+
+async function loadSensor() {
+  const en = await se(`cat "${CORTEX}/sensor/enabled.txt"`, 'off');
+  setOn(document.getElementById('sensor-tog-sensor'), en === 'on');
+  txt('sensor-sensor-state', en === 'on' ? 'Armed' : 'Idle');
+}
+
+async function mod_bypass_runScan() {
+  const box = document.getElementById('bypass-status-box');
+  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--lavender-pale);">Scanning charge controller nodes… plug in and wait.</div>';
+  toast('Bypass scan started — this can take a minute');
+  const out = await se(`sh "${CORTEX}/battery/bypass_charge.sh" detect 2>&1 | tail -8`, '');
+  const node = await se(`cat "${CORTEX}/battery/bypass_node.txt" 2>/dev/null`, '');
+  if (node) {
+    if (box) box.innerHTML = `<div style="font-size:12px;color:var(--ok);">Compatible node found.</div>`;
+    document.getElementById('bypass-scan-row').style.display = 'none';
+    document.getElementById('bypass-toggle-row').style.display = 'flex';
+    txt('bypass-node-label', 'Using ' + node);
+  } else {
+    if (box) box.innerHTML = `<div style="font-size:12px;color:var(--warn);">No working node on this firmware.${out ? '<br>' + out.replace(/</g, '') : ''}</div>`;
+  }
+}
+window.mod_bypass_runScan = mod_bypass_runScan;
+
+async function loadBypass() {
+  const node = await se(`cat "${CORTEX}/battery/bypass_node.txt" 2>/dev/null`, '');
+  if (node) {
+    document.getElementById('bypass-scan-row').style.display = 'none';
+    document.getElementById('bypass-toggle-row').style.display = 'flex';
+    txt('bypass-node-label', 'Using ' + node);
+    const box = document.getElementById('bypass-status-box');
+    if (box) box.innerHTML = '<div style="font-size:12px;color:var(--ok);">Previously detected node is saved.</div>';
+  }
+  const tog = document.getElementById('bypass-tog-bypass');
+  if (tog && !tog.dataset.wired) {
+    tog.dataset.wired = '1';
+    tog.addEventListener('click', () => {
+      tog.classList.toggle('on');
+      se(`sh "${CORTEX}/battery/bypass_charge.sh" ${isOn(tog) ? 'on' : 'off'}`);
+      toast('Bypass: ' + (isOn(tog) ? 'on' : 'off'));
+    });
+  }
+}
+
+window.addEventListener('popstate', (e) => {
+  const key = (e.state && e.state.panel) || (location.hash ? location.hash.slice(1) : 'home');
+  document.querySelectorAll('.screen').forEach((s) => { s.style.display = 'none'; });
+  const target = document.getElementById('panel-' + key);
+  if (target) target.style.display = '';
+  sdSyncBottomNav(key);
+});
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const saved = await se(`cat "${CORTEX}/settings/theme.txt" 2>/dev/null`, '');
+  const theme = saved || document.documentElement.getAttribute('data-theme') || 'lavender';
+  setTheme(theme);
+  const key = location.hash ? location.hash.slice(1) : 'home';
+  if (key && key !== 'home') shellNav(key);
+  else refreshHome();
+  setInterval(() => {
+    const home = document.getElementById('panel-home');
+    if (home && home.style.display !== 'none') refreshHome();
+  }, 8000);
+});

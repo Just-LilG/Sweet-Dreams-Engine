@@ -1,0 +1,30 @@
+# cortex/device/mitigation_rules.txt — Sweet Dreams
+# Shell port of Encore Tweaks' device_mitigation.json concept
+# (github.com/rem01gaming/encore, Apache-2.0) — same idea (a data file of
+# per-device quirk overrides you can edit without touching any script),
+# reshaped into a format plain POSIX sh can parse without a JSON library,
+# since this module has no dependency on one.
+#
+# Format (pipe-delimited, one rule per line, '#' comments and blank lines
+# ignored):
+#   RULE_NAME|FIELD|MATCH_TYPE|MATCH_VALUE|ITEM1,ITEM2,...
+#
+# FIELD: one of KERNEL_RELEASE, DEVICE_MODEL, SOC_MODEL, ANDROID_VERSION,
+#        SECURITY_PATCH, SELINUX_STATE (see gather_info.sh)
+# MATCH_TYPE: "contains" (substring), "exact" (whole-field match), or
+#             "regex" (POSIX ERE via grep -E)
+# ITEMS: comma-separated mitigation item names — anything downstream scripts
+#        can check for with: grep -qx "ITEM_NAME" cortex/device/active.txt
+#
+# Rules are additive — every matching rule's items get merged into the
+# active set alongside the defaults below. A device can match more than
+# one rule.
+
+# Always-on defaults, regardless of device — none currently, kept as an
+# empty, clearly-labeled section so it's obvious where to add one instead
+# of it looking like an oversight.
+#DEFAULT||||
+
+# Example (disabled by default — remove the leading '#' to activate, or
+# copy the pattern for a new device you've confirmed has the same issue):
+#INFINIX_HOT60_CMD_BLOCKED|DEVICE_MODEL|contains|Infinix X6886|CMD_DISPATCHER_UNRELIABLE

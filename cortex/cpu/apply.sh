@@ -22,21 +22,33 @@ set_a76() {
     done
 }
 
+# Optional WebUI ceilings (kHz). Absent/invalid = profile default.
+USER_A55_MAX=$(cat "$CORTEX/cpu/a55_max_khz.txt" 2>/dev/null)
+USER_A76_MAX=$(cat "$CORTEX/cpu/a76_max_khz.txt" 2>/dev/null)
+pick_max() {
+    DEF="$1"
+    USER="$2"
+    case "$USER" in
+        ''|*[!0-9]*) echo "$DEF" ;;
+        *) echo "$USER" ;;
+    esac
+}
+
 case "$PROFILE" in
     gaming)
         set_gov "performance"
-        set_a55 1800000 2000000
-        set_a76 2000000 2200000
+        set_a55 1800000 "$(pick_max 2000000 "$USER_A55_MAX")"
+        set_a76 2000000 "$(pick_max 2200000 "$USER_A76_MAX")"
         ;;
     balanced)
         set_gov "schedutil"
-        set_a55 500000 2000000
-        set_a76 725000 2200000
+        set_a55 500000 "$(pick_max 2000000 "$USER_A55_MAX")"
+        set_a76 725000 "$(pick_max 2200000 "$USER_A76_MAX")"
         ;;
     battery)
         set_gov "powersave"
-        set_a55 500000 1200000
-        set_a76 725000 1500000
+        set_a55 500000 "$(pick_max 1200000 "$USER_A55_MAX")"
+        set_a76 725000 "$(pick_max 1500000 "$USER_A76_MAX")"
         ;;
 esac
 
