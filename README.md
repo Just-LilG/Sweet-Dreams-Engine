@@ -2,7 +2,7 @@
 
 MediaTek FPS unlocker and thermal bypass engine for KernelSU / Magisk.
 
-**Version:** v2.5.39-skipmount  
+**Version:** v2.5.40  
 **Author:** Lil G Tech Labs
 
 ## Features
@@ -13,7 +13,7 @@ MediaTek FPS unlocker and thermal bypass engine for KernelSU / Magisk.
 - RAM / ZRAM modes, kill-background, game preload
 - Battery charge limiter and optional bypass charging
 - Touch report-rate / booster, network BBR + DNS, ping stabilizer
-- Thermal spoof armed at rest, applied in-game only (lite / extreme)
+- Thermal spoof armed at rest (`armed.txt`), applied in-game only via bind-mount fake °C (lite / advanced). Not a boot-time sensor blackout.
 - Per-game device identity spoof (Zygisk + prop hook)
 - Health / capability / conflict probes
 - KernelSU / MMRL WebUI (lavender / vanilla glass)
@@ -26,7 +26,7 @@ MediaTek FPS unlocker and thermal bypass engine for KernelSU / Magisk.
 
 ## Notes
 
-- Thermal blackout is **not** applied at boot. Boot only stops thermal daemons; sensor override runs when a selected game is in the foreground.
+- Thermal override is a **bind-mount spoof** while a selected game is in the foreground. Boot only stops vendor thermal daemons; it does not hide sensors.
 - Render scale is **per selected game**, not a global `wm size`.
 - Audio latency props apply on game launch. They are vendor-stack hints, not a force of AAudio MMAP for every app.
 

@@ -2,11 +2,11 @@
 
 ## GitHub
 
-- **v2.5.40-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.40-skipmount/SweetDreams-v2_5_40-skipmount.zip)
+- **v2.5.40** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.40/SweetDreams-v2_5_40.zip)
 - **v2.5.39-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.39-skipmount/SweetDreams-v2_5_39-skipmount.zip)
 - **v2.5.38-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.38-skipmount/SweetDreams-v2_5_38-skipmount.zip)
 
-## v2.5.40-skipmount
+## v2.5.40
 
 - Health WebUI reads `cortex/health/*.status` (the files apply scripts actually write).
 - Thermal language: `armed.txt` (`armed`/`off`) with `status.txt` still written for older scripts.
