@@ -244,8 +244,9 @@ if [ -s "$TMP" ] && grep -q '"cpu_spoof"' "$TMP" && grep -q '^{' "$TMP"; then
     # specific key ends up requested.
     CPU_SYNCED=0
     if [ -d "$CPU_SRC_DIR" ]; then
-        mkdir -p "$CPU_OUT_DIR" 2>/dev/null
+        mkdir -p "$CPU_OUT_DIR" "$COPG_DIR/CPU" 2>/dev/null
         cp -f "$CPU_SRC_DIR"/cpuinfo_* "$CPU_OUT_DIR"/ 2>/dev/null
+        cp -f "$CPU_SRC_DIR"/cpuinfo_* "$COPG_DIR/CPU/" 2>/dev/null
         for f in "$CPU_OUT_DIR"/cpuinfo_*; do
             [ -f "$f" ] || continue
             chmod 0444 "$f" 2>/dev/null

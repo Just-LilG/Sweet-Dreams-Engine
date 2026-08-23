@@ -159,31 +159,44 @@ run_smart_charge() {
     fi
 }
 
+sample_telemetry() {
+    BATT_TEMP=$(read_battery_temp | tr -d '\r\n ')
+    case "$BATT_TEMP" in
+        ''|*[!0-9-]*)
+            BATT_TEMP=""
+            BATT_TEMP_C="-"
+            ;;
+        *)
+            BATT_TEMP_C=$(awk -v t="$BATT_TEMP" 'BEGIN { printf "%.1f", t/10 }')
+            ;;
+    esac
+    FREE_RAM=$(read_free_ram_mb)
+    BATT_PCT=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null | tr -d '\r\n ' || echo "-")
+    [ -n "$BATT_PCT" ] || BATT_PCT="-"
+    GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null | tr -d '\r\n ' || echo "-")
+    [ -n "$GOV" ] || GOV="-"
+    PROFILE=$(cat "$CORTEX/cpu/profile.txt" 2>/dev/null | tr -d '\r\n ' || echo "-")
+    [ -n "$PROFILE" ] || PROFILE="-"
+}
+
+write_status_line() {
+    local flag="$1"
+    echo "${BATT_TEMP_C}|${BATT_PCT}|${FREE_RAM}|${GOV}|${PROFILE}|${flag}" > "$AI_CFG/status.txt"
+}
+
 log_ai "Engine started (PID $$) - native telemetry supervisor"
 
 while true; do
+    sample_telemetry
     EN=$(cat "$AI_CFG/enabled.txt" 2>/dev/null || echo "on")
     if [ "$EN" != "on" ]; then
-        # User turned the engine off - release any held override and idle.
-        # Bug fix: this branch used to `continue` without touching status.txt,
-        # so the WebUI kept displaying whatever "Watching - NN°C" line was
-        # written the last time the engine was on - forever, even minutes
-        # after being switched off. That made the toggle look broken/dead
-        # since nothing on screen ever changed. Write an explicit "off"
-        # status every idle tick so the dashboard can tell the difference
-        # between "on and watching" and "off".
+        # Still publish live temp/RAM so the WebUI readout is never "off°C".
+        # Safety override is released; scheduler/charge logic stays idle.
         release_safety_override
-        echo "off|off|off|off|off|off" > "$AI_CFG/status.txt"
+        write_status_line "idle"
         sleep 5
         continue
     fi
-
-    BATT_TEMP=$(read_battery_temp)
-    BATT_TEMP_C=$(( BATT_TEMP / 10 ))
-    FREE_RAM=$(read_free_ram_mb)
-    BATT_PCT=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "-")
-    GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "-")
-    PROFILE=$(cat "$CORTEX/cpu/profile.txt" 2>/dev/null || echo "-")
 
     # -- thermal safety state machine --------------------------------------─
     if [ "$BATT_TEMP" -ge "$TEMP_CRIT" ] 2>/dev/null; then
@@ -209,9 +222,7 @@ while true; do
     SMART_CHG_EN=$(cat "$BAT_CFG/smart_charge_enabled.txt" 2>/dev/null || echo "off")
     [ "$SMART_CHG_EN" = "on" ] && run_smart_charge
 
-    # -- status line for WebUI ----------------------------------------------
-    echo "${BATT_TEMP_C}|${BATT_PCT}|${FREE_RAM}|${GOV}|${PROFILE}|${OVERRIDE_ACTIVE}" \
-        > "$AI_CFG/status.txt"
+    write_status_line "$OVERRIDE_ACTIVE"
 
     sleep 5
 done

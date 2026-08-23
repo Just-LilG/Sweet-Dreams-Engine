@@ -60,9 +60,21 @@ restore_game_downscale() {
     if [ "$_sdk" -gt 0 ] && [ "$_sdk" -lt 33 ]; then
         cmd device_config delete game_overlay "$_pkg" >/dev/null 2>&1
         cmd game mode 1 "$_pkg" >/dev/null 2>&1
+        BAK=$(cat "$MODDIR/cortex/display/wm_size_backup.txt" 2>/dev/null)
+        if [ -n "$BAK" ]; then
+            wm size "$BAK" >/dev/null 2>&1 || wm size reset >/dev/null 2>&1
+            rm -f "$MODDIR/cortex/display/wm_size_backup.txt"
+        fi
         log_res "Reset game_overlay for $_pkg (SDK $_sdk) - native resolution restored"
     else
         cmd game reset "$_pkg" >/dev/null 2>&1
+        BAK=$(cat "$MODDIR/cortex/display/wm_size_backup.txt" 2>/dev/null)
+        if [ -n "$BAK" ]; then
+            wm size "$BAK" >/dev/null 2>&1 || wm size reset >/dev/null 2>&1
+            rm -f "$MODDIR/cortex/display/wm_size_backup.txt"
+        else
+            wm size reset >/dev/null 2>&1
+        fi
         log_res "Reset intervention for $_pkg - native resolution restored"
     fi
 }
@@ -84,7 +96,35 @@ apply_game_downscale() {
         log_res "Applied downscale=$_res for $_pkg via Game Mode API"
         return 0
     fi
-    log_res "WARNING: cmd game set failed (dispatcher unavailable on this device?) - downscale may not actually be active for $_pkg"
+    if cmd game set --mode 2 --downscale "$_res" "$_pkg" >/dev/null 2>&1; then
+        log_res "Applied downscale=$_res for $_pkg via Game Mode --mode 2 --downscale"
+        return 0
+    fi
+    cmd game mode 2 "$_pkg" >/dev/null 2>&1
+    if cmd game set --downscale "$_res" "$_pkg" >/dev/null 2>&1; then
+        log_res "Applied downscale=$_res for $_pkg after cmd game mode 2"
+        return 0
+    fi
+    # Last resort: global wm size. Restored on native/game_end.
+    PHYS=$(wm size 2>/dev/null | awk '/Physical size:/ {print $3; exit}')
+    [ -z "$PHYS" ] && PHYS=$(wm size 2>/dev/null | awk '/size:/ {print $NF; exit}')
+    W=${PHYS%x*}
+    H=${PHYS#*x}
+    case "$W$H" in
+        ''|*[!0-9]*)
+            log_res "WARNING: all Game Mode paths failed and wm size parse failed"
+            return 1
+            ;;
+    esac
+    # awk for float scale on toybox.
+    SW=$(awk -v w="$W" -v s="$_res" 'BEGIN { printf "%d", w*s }')
+    SH=$(awk -v h="$H" -v s="$_res" 'BEGIN { printf "%d", h*s }')
+    if [ "$SW" -ge 240 ] && [ "$SH" -ge 240 ] && wm size "${SW}x${SH}" >/dev/null 2>&1; then
+        echo "$PHYS" > "$MODDIR/cortex/display/wm_size_backup.txt"
+        log_res "Applied wm size ${SW}x${SH} (from $PHYS) scale=$_res — Game Mode API unavailable"
+        return 0
+    fi
+    log_res "WARNING: cmd game set and wm size both failed — downscale not active for $_pkg"
     return 1
 }
 

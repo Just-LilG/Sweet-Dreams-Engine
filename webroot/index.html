@@ -20,12 +20,9 @@
   --bg-base-1-rgb:43,37,64;
   --theme-color-meta:#2b2540;
 }
-/* Vanilla theme: same glass mechanics, backdrop/accent rebuilt from
-   #F1FEC8 per the earlier confirmed palette. Shell chrome (nav, header,
-   home cards, FABs, buttons) re-skins live via these variables. Individual
-   module screens below still use their own literal lavender hex values in
-   places — a full per-screen re-derivation is future work, flagged here
-   rather than silently claimed as complete. */
+/* Vanilla theme: glass mechanics stay; chrome and inner screens that
+   use var(--lavender*) follow this palette. Remaining #fff is on-purpose
+   contrast on dark glass, not a leftover lavender hardcode. */
 :root[data-theme="vanilla"]{
   --lavender:#f1fec8; --lavender-deep:#d9e8a8; --lavender-pale:#f8ffe3;
   --lavender-rgb:241,254,200;
@@ -52,6 +49,18 @@ html::before{
   transition:background .3s;
 }
 body{font-family:var(--font-body);color:#fff;}
+
+.status-pills{display:flex;gap:8px;flex-wrap:wrap;padding:14px 20px 0;}
+.status-pill{font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);}
+.quick-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 20px 0;}
+.quick-card{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:12px 8px;text-align:center;font-size:12px;font-weight:800;cursor:pointer;}
+.tune-fold{margin:8px 0 0;}
+.tune-fold>summary{list-style:none;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);font-weight:700;padding:12px 4px;cursor:pointer;}
+.tune-fold>summary::-webkit-details-marker{display:none;}
+.game-icon{width:38px;height:38px;border-radius:10px;overflow:hidden;background:rgba(255,255,255,.1);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.game-icon svg{width:18px;height:18px;stroke:var(--lavender-pale);}
+.log-src-chips{display:flex;gap:8px;margin:0 0 10px;}
+
 .screen{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 #app-scroll{position:fixed;inset:0;overflow:hidden;}
 
@@ -878,6 +887,29 @@ body{font-family:var(--font-body);color:#fff;}
 .screen-thermal .risk-title {font-size:12px;font-weight:800;color:var(--danger);margin-bottom:4px;display:flex;align-items:center;gap:6px;}
 .screen-thermal .risk-body {font-size:11px;color:rgba(255,255,255,.75);line-height:1.6;}
 .screen-thermal .advanced-lock {display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.25);border-radius:var(--radius-md);font-size:12px;font-weight:700;color:rgba(255,255,255,.6);cursor:pointer;}
+.screen-engine .stage {max-width:480px;margin:0 auto;padding:20px;}
+.screen-engine .back {background:rgba(255,255,255,.14);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.2);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.screen-engine .top {display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.screen-engine .top-left {display:flex;align-items:center;gap:12px;}
+.screen-engine .title {font-family:var(--font-display);font-size:18px;font-weight:800;}
+.screen-engine .sub {font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;margin-bottom:18px;}
+.screen-engine .live-badge {display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.18);border-radius:var(--radius-pill);padding:5px 14px;}
+.screen-engine .live-dot {width:6px;height:6px;border-radius:50%;background:var(--lavender);}
+.screen-engine .live-badge span {font-size:12px;font-weight:800;color:var(--lavender-pale);}
+.screen-engine .toggle-row {display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-radius:var(--radius-md);background:rgba(255,255,255,.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.16);margin-bottom:16px;gap:12px;}
+.screen-engine .toggle-title {font-size:14px;font-weight:700;}
+.screen-engine .toggle-desc {font-size:11px;color:rgba(255,255,255,.55);margin-top:3px;}
+.screen-engine .switch {width:44px;height:24px;background:rgba(255,255,255,.15);border-radius:var(--radius-pill);position:relative;cursor:pointer;flex-shrink:0;}
+.screen-engine .switch.on {background:rgba(var(--lavender-rgb),.4);}
+.screen-engine .switch::after {content:'';position:absolute;width:18px;height:18px;background:var(--lavender);top:3px;left:3px;border-radius:50%;transition:left .15s;}
+.screen-engine .switch.on::after {left:23px;background:#fff;}
+.screen-engine .section-title {font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);margin:20px 0 8px;font-weight:700;}
+.screen-engine .stat-box {background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--radius-md);padding:14px 16px;}
+.screen-engine .stat-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px;}
+.screen-engine .stat-row:last-child {border-bottom:none;}
+.screen-engine .stat-label {color:rgba(255,255,255,.55);flex-shrink:0;}
+.screen-engine .stat-val {font-weight:700;text-align:right;}
+.screen-engine input[type=number]{width:56px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:8px;padding:4px 6px;font-size:13px;font-weight:700;text-align:center;color-scheme:dark;}
 .screen-thermal .real-temp-pin {position:sticky;top:0;z-index:5;background:rgba(var(--bg-base-1-rgb),.92);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.16);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
 .screen-thermal input[type=range] {-webkit-appearance:none;width:100%;height:4px;background:rgba(255,255,255,.2);border-radius:2px;outline:none;margin-top:6px;}
 .screen-thermal input[type=range]::-webkit-slider-thumb {-webkit-appearance:none;width:18px;height:18px;background:var(--danger);border-radius:50%;cursor:pointer;}
@@ -1021,7 +1053,20 @@ body{font-family:var(--font-body);color:#fff;}
     </div>
   </div>
 
+  <div class="status-pills">
+    <span class="status-pill" id="home-pill-thermal">Thermal —</span>
+    <span class="status-pill" id="home-pill-spoof">Spoof —</span>
+    <span class="status-pill" id="home-pill-profile">Profile —</span>
+  </div>
+  <div class="quick-grid">
+    <div class="quick-card" onclick="shellNav('games')">Games</div>
+    <div class="quick-card" onclick="shellNav('thermal')">Thermal</div>
+    <div class="quick-card" onclick="shellNav('devicespoof')">Spoof</div>
+  </div>
+
   <div style="padding:0 20px;">
+  <details class="tune-fold" id="home-tune-fold">
+    <summary>Tune — CPU, display, battery, extras</summary>
 
     <div class="section-title">Performance</div>
     <div class="list-flat">
@@ -1117,7 +1162,7 @@ body{font-family:var(--font-body);color:#fff;}
         <div class="row-meta"><div class="icon-well"><svg width="18" height="18" viewBox="0 0 24 24"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg></div><div class="row-text"><div class="row-title">Game Selection</div><div class="row-desc" id="home-sub-games">—</div></div></div>
         <svg class="row-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
       </div>
-      <div class="row clickable" onclick="shellNav('preloadlist')">
+      <div class="row clickable" id="home-row-preload" onclick="shellNav('preloadlist')">
         <div class="row-meta"><div class="icon-well"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg></div><div class="row-text"><div class="row-title">Preloaded Game List</div><div class="row-desc" id="home-sub-preload">—</div></div></div>
         <svg class="row-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
       </div>
@@ -1141,7 +1186,7 @@ body{font-family:var(--font-body);color:#fff;}
         <div class="row-meta"><div class="icon-well"><svg width="18" height="18" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><div class="row-text"><div class="row-title">Bypass Charging</div><div class="row-desc" id="home-sub-bypass">—</div></div></div>
         <svg class="row-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
       </div>
-      <div class="row clickable" onclick="shellNav('sensor')">
+      <div class="row clickable" id="home-row-sensor" onclick="shellNav('sensor')">
         <div class="row-meta"><div class="icon-well"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M12 2v4M12 18v4"/></svg></div><div class="row-text"><div class="row-title">Sensor Optimizer</div><div class="row-desc" id="home-sub-sensor">—</div></div></div>
         <svg class="row-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
       </div>
@@ -1149,11 +1194,12 @@ body{font-family:var(--font-body);color:#fff;}
 
     <div class="section-title">Diagnostics</div>
     <div class="list-flat">
-      <div class="row clickable" onclick="shellNav('compat')">
+      <div class="row clickable" id="home-row-compat" onclick="shellNav('compat')">
         <div class="row-meta"><div class="icon-well"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div><div class="row-text"><div class="row-title">Device Compatibility</div><div class="row-desc" id="home-sub-compat">Checking…</div></div></div>
         <svg class="row-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
       </div>
     </div>
+  </details>
 
   </div>
 
@@ -1191,7 +1237,9 @@ body{font-family:var(--font-body);color:#fff;}
 .screen-games .section-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);margin:20px 0 8px;font-weight:700;}
 .screen-games .game-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--radius-md);background:rgba(255,255,255,.08);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.14);margin-bottom:8px;}
 .screen-games .game-icon{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.screen-games .game-icon svg{stroke:var(--lavender-pale);fill:none;stroke-width:2;}
+.screen-games .game-icon img{width:38px;height:38px;border-radius:10px;object-fit:cover;display:block;}
+.screen-games .game-actions{display:flex;flex-direction:column;gap:6px;margin-right:4px;}
+.screen-games .game-actions button{padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:10px;font-weight:700;}
 .screen-games .game-name{font-size:13px;font-weight:700;color:#fff;flex:1;}
 .screen-games .switch{width:44px;height:24px;background:rgba(255,255,255,.15);border-radius:var(--radius-pill);position:relative;cursor:pointer;flex-shrink:0;}
 .screen-games .switch.on{background:rgba(var(--lavender-rgb),.4);}
@@ -1210,14 +1258,17 @@ body{font-family:var(--font-body);color:#fff;}
   </div>
   <div class="sub">Select which apps get the boost treatment (kill background apps, refresh lock, sensor optimizer, ping stabilizer) when they launch.</div>
 
-  <div class="section-title" style="margin-top:0;">Auto-Detected Games</div>
+  <div class="section-title" style="margin-top:0;">Selected games</div>
+  <div style="display:flex;gap:8px;margin-bottom:10px;">
+    <button type="button" onclick="mod_games_stopAll()" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;font-size:12px;font-weight:700;">Force-stop running games</button>
+  </div>
   <div id="games-installed-list">
     <div class="empty-state" id="games-scan-status">Scanning installed apps…</div>
   </div>
 
   <div class="section-title">Add Manually</div>
   <div class="search-row">
-    <input type="text" id="games-search-input" placeholder="Search installed apps..." oninput="mod_games_filterPicker(this.value)">
+    <input type="text" id="games-search-input" placeholder="Search by app name or package…" oninput="mod_games_filterPicker(this.value)">
   </div>
   <div id="games-search-results"></div>
 </div>
@@ -1256,6 +1307,11 @@ body{font-family:var(--font-body);color:#fff;}
   </div>
 
   <div class="section-title">Recent Log</div>
+  <div class="log-src-chips chip-row" id="logs-source-chips">
+    <div class="chip active" data-src="boot" onclick="mod_logs_pickSource(this)">Boot</div>
+    <div class="chip" data-src="session" onclick="mod_logs_pickSource(this)">Game session</div>
+    <div class="chip" data-src="thermal" onclick="mod_logs_pickSource(this)">Thermal verify</div>
+  </div>
   <div class="term" id="logs-term">Tap Refresh to load…</div>
   <div class="log-actions">
     <button onclick="mod_logs_refresh()">Refresh</button>
@@ -1923,6 +1979,24 @@ body{font-family:var(--font-body);color:#fff;}
     <div style="font-size:11px;font-weight:700;color:var(--danger);margin-bottom:3px;">Cooling override active</div>
     <div style="font-size:11px;color:rgba(255,255,255,.6);line-height:1.5;">Temporarily forced to Battery profile to bring the temperature down. Your saved profile restores automatically once it cools below 40°C.</div>
   </div>
+
+  <div class="toggle-row" style="margin-top:16px;">
+    <div><div class="toggle-title">Night schedule</div><div class="toggle-desc">Switch to Battery profile overnight</div></div>
+    <div class="switch" id="engine-tog-sched" onclick="mod_engine_toggleSched()"></div>
+  </div>
+  <div class="stat-box" style="margin-top:8px;">
+    <div class="stat-row"><span class="stat-label">Night hour</span>
+      <span class="stat-val"><input id="engine-night-h" type="number" min="0" max="23" value="23" onchange="mod_engine_saveSched()"></span></div>
+    <div class="stat-row"><span class="stat-label">Morning hour</span>
+      <span class="stat-val"><input id="engine-morning-h" type="number" min="0" max="23" value="7" onchange="mod_engine_saveSched()"></span></div>
+    <div class="stat-row"><span class="stat-label">Low-battery %</span>
+      <span class="stat-val"><input id="engine-low-bat" type="number" min="5" max="50" value="15" onchange="mod_engine_saveSched()"></span></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:14px;">
+    <button type="button" onclick="mod_engine_applyNow()" style="flex:1;padding:12px;border-radius:12px;background:var(--lavender);border:none;color:var(--ink);font-weight:800;">Apply now</button>
+    <button type="button" onclick="mod_engine_restart()" style="flex:1;padding:12px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;font-weight:700;">Restart engine</button>
+  </div>
+  <div class="stat-box" style="margin-top:12px;font-size:11px;color:rgba(255,255,255,.6);white-space:pre-wrap;" id="engine-last-log">No engine log yet.</div>
 </div>
 </section>
 
@@ -2120,9 +2194,14 @@ body{font-family:var(--font-body);color:#fff;}
   <!-- Real temperature is always visible and pinned, independent of the
        spoof toggle below, so the user can never lose track of ground truth. -->
   <div class="real-temp-pin">
-    <span style="font-size:11px;color:rgba(255,255,255,.6);">Real sensor reading right now</span>
+    <span style="font-size:11px;color:rgba(255,255,255,.6);">Battery sysfs (may be spoofed in Advanced in-game)</span>
     <span style="font-size:13px;font-weight:800;" id="thermal-real-temp">—</span>
   </div>
+  <div class="real-temp-pin" style="margin-top:8px;">
+    <span style="font-size:11px;color:rgba(255,255,255,.6);">OS-seen zone0</span>
+    <span style="font-size:13px;font-weight:800;" id="thermal-os-temp">—</span>
+  </div>
+  <div class="stat-box" id="thermal-verify-box" style="margin-top:10px;font-size:11px;color:rgba(255,255,255,.65);">No spoof verify yet.</div>
 
   <div class="toggle-row">
     <div><div class="toggle-title">Thermal Spoof</div><div class="toggle-desc">Arms the override — actual spoofing only happens in-game</div></div>
@@ -2133,6 +2212,7 @@ body{font-family:var(--font-body);color:#fff;}
   <div class="chip-row" id="thermal-mode-chips">
     <div class="chip active" data-mode="lite" onclick="mod_thermal_pickMode(this)">Lite</div>
     <div class="chip" data-mode="advanced" onclick="mod_thermal_pickMode(this)">Advanced</div>
+    <div class="chip" data-mode="extreme" onclick="mod_thermal_pickMode(this)">Extreme</div>
   </div>
 
   <div id="thermal-lite-info" class="stat-box" style="margin-top:14px;">
@@ -2144,8 +2224,18 @@ body{font-family:var(--font-body);color:#fff;}
       <div class="risk-title">⚠ Sensor spoof — OS sees a fake temperature</div>
       <div class="risk-body">Advanced uses the same bind-mount engine as the previous public release, across every temp bus (zones, battery, IIO, I2C, hwmon). Userspace reads the value you set below instead of the real sensor. That also means Android’s overheat protection is looking at a lie during sustained load. Real damage is possible. Use only if you accept this.</div>
     </div>
+  </div>
+
+  <div id="thermal-extreme-info" style="display:none;margin-top:14px;">
+    <div class="risk-band" style="margin-bottom:12px;">
+      <div class="risk-title">⚠ Extreme — full spoof, applied immediately</div>
+      <div class="risk-body">Same bind-mount coverage as Advanced (every temp bus), and it applies as soon as you arm it — not only when a game is open. Overheat protection is looking at a fake value the whole time it is on.</div>
+    </div>
+  </div>
+
+  <div id="thermal-spoof-block" style="display:none;margin-top:8px;">
     <div class="section-title">Spoof temperature</div>
-    <div style="font-size:11px;color:rgba(255,255,255,.55);margin-bottom:8px;line-height:1.5;">Value reported to the OS while a selected game is running. Previous release was fixed at 27°C.</div>
+    <div style="font-size:11px;color:rgba(255,255,255,.55);margin-bottom:8px;line-height:1.5;">Value reported to the OS while spoofing is active. Previous release was fixed at 27°C.</div>
     <input type="range" min="0" max="45" step="1" value="27" id="thermal-spoof-c" oninput="mod_thermal_onSpoofInput(this)">
     <div class="slider-val" id="thermal-spoof-c-val" style="color:var(--danger);">27°C — OS / games see this</div>
   </div>

@@ -25,6 +25,10 @@ settings_put() {
 rm -f "$LOGFILE"
 log_p() { echo "[$(date '+%H:%M:%S')] $1" >> "$LOGFILE"; }
 
+# Restore WebUI settings saved outside the module (survives zip updates).
+sh "$CORTEX/persist.sh" restore 2>/dev/null
+log_p "Persisted settings restored"
+
 until [ "$(getprop sys.boot_completed)" = "1" ]; do sleep 2; done
 
 # -- Wait for SystemServer's binder services to actually accept transactions --

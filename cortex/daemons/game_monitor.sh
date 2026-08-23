@@ -14,6 +14,24 @@ echo "$$" > "$RUNDIR/game_monitor.pid"
 
 log_p() { echo "[$(date '+%H:%M:%S')] $1" >> "$LOGFILE"; }
 
+. "$CORTEX/thermal/state.sh"
+SESSION_LOG="$CORTEX/daemons/session.log"
+mkdir -p "$CORTEX/daemons" "$CORTEX/games"
+log_s() {
+    local line="[$(date '+%F %H:%M:%S')] $1"
+    echo "$line" >> "$SESSION_LOG"
+    echo "$line" >> "$LOGFILE"
+}
+
+prepare_session_spoof() {
+    local pkg="$1"
+    rm -f "$CORTEX/thermal/spoof_c_session.txt"
+    if [ -n "$pkg" ] && [ -f "$CORTEX/games/${pkg}.spoof_c" ]; then
+        cat "$CORTEX/games/${pkg}.spoof_c" > "$CORTEX/thermal/spoof_c_session.txt"
+        log_s "per-game spoof_c for $pkg: $(cat "$CORTEX/thermal/spoof_c_session.txt")"
+    fi
+}
+
 # Bug fix: the [TIMING] lines below used to call `date +%s%N` (nanosecond
 # epoch) directly at each measurement point. This device's `date` binary
 # doesn't support %N reliably (many toybox/busybox builds on Android
@@ -343,8 +361,11 @@ if [ -n "$RECOVERED_GAME" ]; then
             # existing mount before acting, so calling it again on an
             # already-recovered session that DID get it applied is a safe
             # no-op, not a double-mount.
-            THERMAL_STATUS_RECOVER=$(cat "$CORTEX/thermal/status.txt" 2>/dev/null || echo "enabled")
-            [ "$THERMAL_STATUS_RECOVER" = "disabled" ] && sh "$CORTEX/thermal/apply.sh" game_start "$THERMAL_MODE_RECOVER" 2>/dev/null
+            if thermal_is_armed; then
+                prepare_session_spoof "$RECOVERED_GAME"
+                sh "$CORTEX/thermal/apply.sh" game_start "$THERMAL_MODE_RECOVER" 2>/dev/null
+                log_s "thermal apply (recover) $RECOVERED_GAME"
+            fi
             sh "$CORTEX/touch/apply.sh" game_start 2>/dev/null
             break
         fi
@@ -491,7 +512,8 @@ while true; do
             SENSOR_EN=$(cat "$CORTEX/sensor/enabled.txt"           2>/dev/null || echo "off")
             AUDIO_EN=$(cat "$CORTEX/audio/enabled.txt"             2>/dev/null || echo "off")
             SPOOF_MASTER=$(cat "$CORTEX/games/spoof_master.txt"    2>/dev/null || echo "off")
-            THERMAL_STATUS=$(cat "$CORTEX/thermal/status.txt"      2>/dev/null || echo "enabled")
+            THERMAL_ARMED=0
+            thermal_is_armed && THERMAL_ARMED=1
 
             # -- PHASE 1: Notification - immediate user feedback --------------─
             # Post first so the user sees confirmation the moment detection
@@ -539,7 +561,11 @@ while true; do
             _PID_NET=$!
 
             {
-                [ "$THERMAL_STATUS" = "disabled" ] && sh "$CORTEX/thermal/apply.sh" game_start "$THERMAL_OVERRIDE" 2>/dev/null
+                if [ "$THERMAL_ARMED" = "1" ]; then
+                    prepare_session_spoof "$RUNNING_GAME"
+                    sh "$CORTEX/thermal/apply.sh" game_start "$THERMAL_OVERRIDE" 2>/dev/null
+                    log_s "thermal apply $RUNNING_GAME $(cat "$CORTEX/thermal/last_verify.txt" 2>/dev/null)"
+                fi
                 echo "[TIMING] thermal/apply.sh done: $(( $(_now_ms) - _LAUNCH_T0 ))ms" >> "$LOGFILE"
             } &
             _PID_THERMAL=$!
@@ -581,6 +607,7 @@ while true; do
             # actual page-cache warm takes - neither should block this loop.
             sh "$CORTEX/games/preload.sh" "$RUNNING_GAME" 2>/dev/null &
 
+            sh "$CORTEX/games/cpuinfo_mount.sh" "$RUNNING_GAME" on 2>/dev/null &
             LAST_GAME="$RUNNING_GAME"
             echo "$LAST_GAME" > "$LAST_GAME_FILE"
             LOOP_ITER=0
@@ -794,7 +821,10 @@ while true; do
 
             BACKGROUND_SINCE=0
             log_p "Game OFF: $LAST_GAME"
+            log_s "thermal restore $LAST_GAME"
+            sh "$CORTEX/games/cpuinfo_mount.sh" "$LAST_GAME" off 2>/dev/null
             sh "$CORTEX/thermal/apply.sh" game_end 2>/dev/null
+            rm -f "$CORTEX/thermal/spoof_c_session.txt"
             sh "$CORTEX/touch/apply.sh" game_end 2>/dev/null
             unlock_rr "$TARGET_FPS"
             release_fps_lock "$TARGET_FPS"

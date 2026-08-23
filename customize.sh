@@ -362,7 +362,17 @@ default_if_missing() {
 }
 
 default_if_missing "$MODPATH/cortex/thermal/status.txt"        "disabled"
+# armed.txt is the WebUI-facing name; derive from legacy status.txt on first boot.
+if [ ! -f "$MODPATH/cortex/thermal/armed.txt" ]; then
+    if [ "$(cat "$MODPATH/cortex/thermal/status.txt" 2>/dev/null)" = "disabled" ]; then
+        echo armed > "$MODPATH/cortex/thermal/armed.txt"
+    else
+        echo off > "$MODPATH/cortex/thermal/armed.txt"
+    fi
+fi
 default_if_missing "$MODPATH/cortex/thermal/mode.txt"          "extreme"
+default_if_missing "$MODPATH/cortex/thermal/ui_mode.txt"       "lite"
+default_if_missing "$MODPATH/cortex/thermal/spoof_c.txt"        "27"
 default_if_missing "$MODPATH/cortex/cpu/profile.txt"           "${SD_PICKED_PROFILE:-balanced}"
 default_if_missing "$MODPATH/cortex/touch/status.txt"          "on"
 default_if_missing "$MODPATH/cortex/touch/input_booster.txt"   "on"
@@ -545,6 +555,16 @@ ui_print "  🚀 default loadout"
 # default_if_missing was always correct, only this display line lied
 # about it. Now reads the actual value back from the file that was just
 # written, so the summary matches reality.
+# Settings live in /data/adb/sweet_dreams_persist so a zip flash cannot
+# wipe WebUI choices. If an older install is still on disk (KernelSU
+# modules_update staging), snapshot it first, then restore into this flash.
+if [ -d "/data/adb/modules/sweet_dreams/cortex" ] && [ "$MODPATH" != "/data/adb/modules/sweet_dreams" ]; then
+    MODDIR="/data/adb/modules/sweet_dreams" CORTEX="/data/adb/modules/sweet_dreams/cortex" \
+        sh "$MODPATH/cortex/persist.sh" save 2>/dev/null
+fi
+CORTEX="$MODPATH/cortex" MODDIR="$MODPATH" sh "$MODPATH/cortex/persist.sh" restore 2>/dev/null
+chmod 0755 "$MODPATH/cortex/persist.sh" 2>/dev/null
+
 SD_ACTUAL_PROFILE=$(cat "$MODPATH/cortex/cpu/profile.txt" 2>/dev/null || echo "balanced")
 ui_print "  [OK] profile      $SD_ACTUAL_PROFILE"
 ui_print "  [OK] thermal      extreme (sensors blinded)"
