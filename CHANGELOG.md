@@ -1,7 +1,17 @@
 # Changelog
 
+## v2.5.41
+
+- Settings persist under `/data/adb/sweet_dreams_persist` so a zip flash no longer resets WebUI choices.
+- Games tab: only installed packages, real launcher icons (png/webp), Launch / Force-stop, no ghost COD from the zip.
+- Thermal: visible Extreme mode; bind-mount spoof in init’s mount namespace; apply when armed.
+- Render scale: extra Game Mode command variants plus `wm size` fallback; apply to selected games when you pick a scale.
+- CPU spoof: CPU-only assignments, copy cpuinfo into COPG, bind `/proc/cpuinfo` into the game process as a fallback.
+- Sweet Dreams Engine screen: night schedule, apply/restart, live log.
+
 ## GitHub
 
+- **v2.5.41** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.41/SweetDreams-v2_5_41.zip)
 - **v2.5.40** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.40/SweetDreams-v2_5_40.zip)
 - **v2.5.39-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.39-skipmount/SweetDreams-v2_5_39-skipmount.zip)
 - **v2.5.38-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.38-skipmount/SweetDreams-v2_5_38-skipmount.zip)
