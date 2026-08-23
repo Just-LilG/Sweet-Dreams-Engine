@@ -362,7 +362,16 @@ default_if_missing() {
 }
 
 default_if_missing "$MODPATH/cortex/thermal/status.txt"        "disabled"
+# armed.txt is the WebUI-facing name; derive from legacy status.txt on first boot.
+if [ ! -f "$MODPATH/cortex/thermal/armed.txt" ]; then
+    if [ "$(cat "$MODPATH/cortex/thermal/status.txt" 2>/dev/null)" = "disabled" ]; then
+        echo armed > "$MODPATH/cortex/thermal/armed.txt"
+    else
+        echo off > "$MODPATH/cortex/thermal/armed.txt"
+    fi
+fi
 default_if_missing "$MODPATH/cortex/thermal/mode.txt"          "extreme"
+default_if_missing "$MODPATH/cortex/thermal/spoof_c.txt"        "27"
 default_if_missing "$MODPATH/cortex/cpu/profile.txt"           "${SD_PICKED_PROFILE:-balanced}"
 default_if_missing "$MODPATH/cortex/touch/status.txt"          "on"
 default_if_missing "$MODPATH/cortex/touch/input_booster.txt"   "on"

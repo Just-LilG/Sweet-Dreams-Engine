@@ -106,6 +106,10 @@ echo "0"   > /dev/stune/top-app/schedtune.prefer_idle 2>/dev/null
 # Unmount any fake-temp bind mounts FIRST - if the module is removed while
 # gaming, the spoof mounts may still be active. Lazy umount (-l) ensures
 # the unmount goes through even if a process is actively reading the node.
+echo off > /data/adb/modules/sweet_dreams/cortex/thermal/armed.txt 2>/dev/null
+echo enabled > /data/adb/modules/sweet_dreams/cortex/thermal/status.txt 2>/dev/null
+echo 27 > /data/adb/modules/sweet_dreams/cortex/thermal/spoof_c.txt 2>/dev/null
+rm -f /data/adb/modules/sweet_dreams/cortex/thermal/spoof_c_session.txt
 if [ -f /data/adb/modules/sweet_dreams/cortex/thermal/mounted.list ]; then
     while IFS= read -r t; do
         [ -n "$t" ] && umount -l "$t" 2>/dev/null

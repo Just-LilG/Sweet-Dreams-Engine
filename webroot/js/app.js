@@ -251,7 +251,7 @@ async function refreshHome() {
     `cat /sys/class/power_supply/battery/capacity 2>/dev/null`,
     `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null`,
     `cat "${CORTEX}/cpu/profile.txt" 2>/dev/null`,
-    `cat "${CORTEX}/thermal/status.txt" 2>/dev/null`,
+    `(cat "${CORTEX}/thermal/armed.txt" 2>/dev/null; echo; cat "${CORTEX}/thermal/status.txt" 2>/dev/null)`,
     `cat "${CORTEX}/thermal/mode.txt" 2>/dev/null`,
     `cat "${CORTEX}/perf/enabled.txt" 2>/dev/null`,
     `cat "${CORTEX}/net/status.txt" 2>/dev/null`,
@@ -344,13 +344,21 @@ async function refreshHome() {
   txt('home-sub-games', nGames ? `${nGames} game${nGames === 1 ? '' : 's'} selected` : 'None selected');
   txt('home-sub-gamepreload', rows[29] === 'on' ? 'On' : 'Off');
   txt('home-sub-sensor', rows[30] === 'on' ? 'Armed' : 'Off');
+  const sensorRow = document.getElementById('home-row-sensor');
+  if (sensorRow) sensorRow.style.display = rows[30] === 'on' ? '' : 'none';
   const bypassNode = await se(`cat "${CORTEX}/battery/bypass_node.txt" 2>/dev/null`, '');
   txt('home-sub-bypass', bypassNode ? 'Node saved' : 'Scan required');
 
-  const thermalArmed = rows[6] === 'disabled';
+  const thermalArmed = /armed|disabled/.test(rows[6] || '');
   setOn(document.getElementById('home-tog-thermal'), thermalArmed);
   txt('home-sub-thermal', thermalArmed ? `Armed · ${rows[7] === 'extreme' ? 'Advanced' : 'Lite'}` : 'Off — real sensors');
   txt('home-sub-spoof', rows[27] === 'on' ? 'Active — Zygisk + prop hook' : 'Off');
+  const pillT = document.getElementById('home-pill-thermal');
+  if (pillT) pillT.textContent = thermalArmed ? 'Thermal armed' : 'Thermal off';
+  const pillS = document.getElementById('home-pill-spoof');
+  if (pillS) pillS.textContent = rows[27] === 'on' ? 'Spoof on' : 'Spoof off';
+  const pillP = document.getElementById('home-pill-profile');
+  if (pillP) pillP.textContent = 'Profile ' + (rows[5] || '—');
 
   const lastGame = rows[32];
   const banner = document.getElementById('home-game-status-banner');
@@ -413,9 +421,8 @@ function syncProfileUI(p, animate) {
 function mod_home_setProfile(p) {
   syncProfileUI(p, true);
   toast('Profile: ' + p);
-  write(`${CORTEX}/cpu/profile.txt`, p).then(() => {
-    apply('cpu/apply.sh');
-    apply('gpu/apply.sh');
+  se(`sh "${CORTEX}/profile/apply.sh" '${p.replace(/'/g, '')}'`).then((out) => {
+    toast(out.includes('PROFILE_APPLIED') ? 'CPU + GPU + sched applied' : 'Profile apply finished');
   });
   txt('home-cpu-value', p === 'gaming' ? 'Performance' : p === 'battery' ? 'Efficiency' : 'Balanced');
 }
@@ -451,8 +458,7 @@ window.toggleTouch = toggleTouch;
 function toggleThermal(el) {
   el.classList.toggle('on');
   const armed = isOn(el);
-  const next = armed ? 'disabled' : 'enabled';
-  write(`${CORTEX}/thermal/status.txt`, next);
+  se(`. "${CORTEX}/thermal/state.sh"; thermal_set_armed ${armed ? 'armed' : 'off'}`);
   txt('home-sub-thermal', armed ? 'Armed — in-game only' : 'Off — real sensors');
   toast(armed ? 'Thermal spoof armed' : 'Thermal spoof off');
 }
@@ -881,6 +887,8 @@ document.addEventListener('click', (e) => {
 /* ── Kill BG ── */
 function mod_killbg_toggleKill() {
   const t = document.getElementById('killbg-tog-killbg');
+  const turningOn = !isOn(t);
+  if (turningOn && !confirm('Kill background apps on game launch? Other apps will be force-stopped (system apps are spared).')) return;
   t.classList.toggle('on');
   write(`${CORTEX}/games/kill_bg_enabled.txt`, isOn(t) ? 'on' : 'off');
   toast('Kill BG: ' + (isOn(t) ? 'on' : 'off'));
@@ -1200,7 +1208,7 @@ function mod_thermal_toggleThermal() {
   const t = document.getElementById('thermal-tog-th');
   t.classList.toggle('on');
   const armed = isOn(t);
-  write(`${CORTEX}/thermal/status.txt`, armed ? 'disabled' : 'enabled');
+  se(`. "${CORTEX}/thermal/state.sh"; thermal_set_armed ${armed ? 'armed' : 'off'}`);
   txt('thermal-th-state', armed ? 'Armed' : 'Off');
   const el = document.getElementById('thermal-th-state');
   if (el) el.style.color = armed ? 'var(--ok)' : 'var(--danger)';
@@ -1209,9 +1217,10 @@ function mod_thermal_toggleThermal() {
 window.mod_thermal_toggleThermal = mod_thermal_toggleThermal;
 
 function mod_thermal_pickMode(el) {
+  const isAdv = el.dataset.mode === 'advanced';
+  if (isAdv && !confirm('Advanced spoofs battery and extra sensors. Android may not see real overheating. Continue?')) return;
   document.querySelectorAll('#thermal-mode-chips .chip').forEach((c) => c.classList.remove('active'));
   el.classList.add('active');
-  const isAdv = el.dataset.mode === 'advanced';
   const lite = document.getElementById('thermal-lite-info');
   const adv = document.getElementById('thermal-advanced-info');
   if (lite) lite.style.display = isAdv ? 'none' : 'block';
@@ -1244,13 +1253,16 @@ function mod_thermal_onSpoofInput(el) {
 window.mod_thermal_onSpoofInput = mod_thermal_onSpoofInput;
 
 async function loadThermal() {
-  const [st, mode, temp, spoof] = await batched([
+  const [armedFile, st, mode, temp, spoof, z0, verify] = await batched([
+    `cat "${CORTEX}/thermal/armed.txt" 2>/dev/null`,
     `cat "${CORTEX}/thermal/status.txt" 2>/dev/null`,
     `cat "${CORTEX}/thermal/mode.txt" 2>/dev/null`,
     `cat /sys/class/power_supply/battery/temp 2>/dev/null`,
     `cat "${CORTEX}/thermal/spoof_c.txt" 2>/dev/null`,
+    `cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null`,
+    `cat "${CORTEX}/thermal/last_verify.txt" 2>/dev/null`,
   ]);
-  const armed = st === 'disabled';
+  const armed = armedFile === 'armed' || st === 'disabled';
   setOn(document.getElementById('thermal-tog-th'), armed);
   txt('thermal-th-state', armed ? 'Armed' : 'Off');
   const ui = mode === 'extreme' ? 'advanced' : 'lite';
@@ -1261,6 +1273,11 @@ async function loadThermal() {
   if (adv) adv.style.display = ui === 'advanced' ? 'block' : 'none';
   const tRaw = parseInt(temp, 10);
   if (Number.isFinite(tRaw)) txt('thermal-real-temp', (tRaw / 10).toFixed(1) + '°C');
+  const zRaw = parseInt(z0, 10);
+  const osEl = document.getElementById('thermal-os-temp');
+  if (osEl) osEl.textContent = Number.isFinite(zRaw) ? (zRaw / 1000).toFixed(1) + '°C OS-seen' : '—';
+  const verEl = document.getElementById('thermal-verify-box');
+  if (verEl) verEl.textContent = verify ? ('Last apply: ' + verify) : 'No spoof verify yet — launches a game (or apply) to populate this.';
   let c = parseInt(spoof, 10);
   if (!Number.isFinite(c)) c = 27;
   c = Math.max(0, Math.min(45, c));
@@ -1280,9 +1297,13 @@ function mod_devicespoof_toggleMaster() {
     cfg.style.opacity = on ? '1' : '.4';
     cfg.style.pointerEvents = on ? 'auto' : 'none';
   }
+  if (on && !confirm('Device spoof changes identity seen by games. Competitive titles may flag this. Continue?')) {
+    t.classList.remove('on');
+    return;
+  }
   write(`${CORTEX}/games/spoof_master.txt`, on ? 'on' : 'off').then(() => {
     if (on) {
-      se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"; pkill -f "${MOD}/controller" 2>/dev/null; sleep 1; nohup "${MOD}/controller" >/dev/null 2>&1 &`);
+      se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"; if ! pgrep -f "${MOD}/controller" >/dev/null; then nohup "${MOD}/controller" >/dev/null 2>&1 & fi`);
     } else {
       se(`pkill -f "${MOD}/controller" 2>/dev/null; sh "${CORTEX}/games/spoof.sh"`);
     }
@@ -1421,6 +1442,27 @@ async function saveSpoofAssignment() {
 }
 
 /* ── Games ── */
+
+let _gameLabels = {};
+
+function gameLabel(pkg) {
+  return _gameLabels[pkg] || pkg.split('.').pop();
+}
+
+function gameAvatarHtml(pkg) {
+  return `<div class="game-icon" data-pkg="${pkg}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="6"/></svg></div>`;
+}
+
+async function fillGameIcons(pkgs) {
+  for (const pkg of pkgs.slice(0, 24)) {
+    const b64 = await se(`sh "${CORTEX}/games/get_icon.sh" '${pkg.replace(/'/g, "")}' 2>/dev/null`, '');
+    if (!b64 || b64.length < 32) continue;
+    document.querySelectorAll(`.game-icon[data-pkg="${pkg}"]`).forEach((el) => {
+      el.innerHTML = `<img alt="" src="data:image/png;base64,${b64.trim()}" style="width:100%;height:100%;border-radius:10px;object-fit:cover;">`;
+    });
+  }
+}
+
 async function mod_games_load() {
   const statusEl = document.getElementById('games-scan-status');
   const listEl = document.getElementById('games-installed-list');
@@ -1428,13 +1470,25 @@ async function mod_games_load() {
     if (statusEl) statusEl.textContent = 'No root bridge — open this from KernelSU / MMRL to scan apps.';
     return;
   }
-  if (statusEl) statusEl.textContent = 'Scanning installed apps…';
-  const raw = await se("pm list packages -3 2>/dev/null | sed 's/^package://' | sort", '');
-  _gamesAll = raw.split(/\n/).map((s) => s.trim()).filter(Boolean);
+  if (statusEl) statusEl.textContent = 'Loading games…';
   const sel = await se(`cat "${CORTEX}/games/selected.txt" 2>/dev/null`, '');
   _gamesSelected = new Set(sel.split(/\n/).map((s) => s.trim()).filter(Boolean));
+  const pkgs = Array.from(_gamesSelected);
+  if (pkgs.length) {
+    const labeled = await se(`sh "${CORTEX}/games/list_apps.sh" labels ${pkgs.map((p) => `'${p.replace(/'/g, "")}'`).join(' ')}`, '');
+    labeled.split(/\n/).forEach((line) => {
+      const i = line.indexOf('|');
+      if (i > 0) _gameLabels[line.slice(0, i)] = line.slice(i + 1);
+    });
+  }
+  const likely = await se(`sh "${CORTEX}/games/list_apps.sh" likely`, '');
+  likely.split(/\n/).forEach((line) => {
+    const i = line.indexOf('|');
+    if (i > 0) _gameLabels[line.slice(0, i)] = line.slice(i + 1);
+  });
   if (statusEl) statusEl.textContent = '';
   mod_games_renderSelected();
+  fillGameIcons(pkgs);
 }
 window.mod_games_load = mod_games_load;
 
@@ -1442,29 +1496,53 @@ function mod_games_renderSelected() {
   const listEl = document.getElementById('games-installed-list');
   if (!listEl) return;
   if (_gamesSelected.size === 0) {
-    listEl.innerHTML = '<div class="empty-state">No games selected yet — search below to add some.</div>';
+    listEl.innerHTML = '<div class="empty-state">No games selected yet — search by name below. Random user apps stay out of this list until you add them.</div>';
     return;
   }
-  listEl.innerHTML = Array.from(_gamesSelected).map((pkg) => `
-    <div class="game-row">
-      <div class="game-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="6"/></svg></div>
-      <div class="game-name">${pkg}</div>
+  listEl.innerHTML = Array.from(_gamesSelected).map((pkg) => {
+    const spoofPath = `${CORTEX}/games/${pkg}.spoof_c`;
+    return `<div class="game-row">
+      ${gameAvatarHtml(pkg)}
+      <div class="game-meta" style="flex:1;min-width:0;">
+        <div class="game-name">${gameLabel(pkg)}</div>
+        <div class="game-pkg" style="font-size:10px;color:rgba(255,255,255,.45);overflow:hidden;text-overflow:ellipsis;">${pkg}</div>
+        <label style="font-size:10px;color:rgba(255,255,255,.5);">Spoof °C <input type="number" min="0" max="45" placeholder="default" style="width:64px;margin-left:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:8px;padding:2px 6px;" onchange="mod_games_setSpoofC('${pkg}', this.value)"></label>
+      </div>
       <div class="switch on" onclick="mod_games_toggle('${pkg}', this)"></div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
-function mod_games_filterPicker(query) {
+function mod_games_setSpoofC(pkg, val) {
+  const n = parseInt(val, 10);
+  if (!Number.isFinite(n) || val === '') {
+    se(`rm -f "${CORTEX}/games/${pkg}.spoof_c"`);
+    return;
+  }
+  write(`${CORTEX}/games/${pkg}.spoof_c`, String(Math.max(0, Math.min(45, n))));
+}
+window.mod_games_setSpoofC = mod_games_setSpoofC;
+
+async function mod_games_filterPicker(query) {
   const resultsEl = document.getElementById('games-search-results');
   if (!resultsEl) return;
   if (!query || query.length < 2) { resultsEl.innerHTML = ''; return; }
-  const q = query.toLowerCase();
-  const matches = _gamesAll.filter((p) => p.toLowerCase().includes(q)).slice(0, 20);
-  resultsEl.innerHTML = matches.length
-    ? matches.map((pkg) => {
+  const raw = await se(`sh "${CORTEX}/games/list_apps.sh" search '${query.replace(/'/g, "")}'`, '');
+  const rows = raw.split(/\n/).map((line) => {
+    const i = line.indexOf('|');
+    if (i < 0) return null;
+    const pkg = line.slice(0, i);
+    const lab = line.slice(i + 1);
+    _gameLabels[pkg] = lab;
+    return pkg;
+  }).filter(Boolean).slice(0, 20);
+  resultsEl.innerHTML = rows.length
+    ? rows.map((pkg) => {
         const on = _gamesSelected.has(pkg);
-        return `<div class="game-row"><div class="game-name">${pkg}</div><div class="switch${on ? ' on' : ''}" onclick="mod_games_toggle('${pkg}', this)"></div></div>`;
+        return `<div class="game-row">${gameAvatarHtml(pkg)}<div class="game-meta" style="flex:1;"><div class="game-name">${gameLabel(pkg)}</div><div style="font-size:10px;color:rgba(255,255,255,.45);">${pkg}</div></div><div class="switch${on ? ' on' : ''}" onclick="mod_games_toggle('${pkg}', this)"></div></div>`;
       }).join('')
     : '<div class="empty-state">No matching apps</div>';
+  fillGameIcons(rows);
 }
 window.mod_games_filterPicker = mod_games_filterPicker;
 
@@ -1474,6 +1552,7 @@ async function mod_games_toggle(pkg, el) {
   else _gamesSelected.delete(pkg);
   await writeLines(`${CORTEX}/games/selected.txt`, Array.from(_gamesSelected));
   mod_games_renderSelected();
+  fillGameIcons(Array.from(_gamesSelected));
 }
 window.mod_games_toggle = mod_games_toggle;
 
@@ -1485,19 +1564,30 @@ async function mod_logs_refresh() {
     return;
   }
   if (termEl) termEl.textContent = 'Loading…';
+  const src = document.querySelector('#logs-source-chips .chip.active')?.dataset.src || 'boot';
+  const file = src === 'session' ? `${CORTEX}/daemons/session.log`
+    : src === 'thermal' ? `${CORTEX}/thermal/last_verify.txt`
+    : `${MOD}/boot.log`;
   const [ai, mon, ctrl, log] = await batched([
     `pgrep -f "${CORTEX}/ai/engine.sh" 2>/dev/null`,
     `pgrep -f "${CORTEX}/daemons/game_monitor.sh" 2>/dev/null`,
     `pgrep -f "${MOD}/controller" 2>/dev/null`,
-    `tail -n 80 "${MOD}/boot.log" 2>/dev/null`,
+    `tail -n 120 "${file}" 2>/dev/null`,
   ]);
   txt('logs-batt-status', ai ? 'Running' : 'Not detected');
   txt('logs-games-status', mon ? 'Running' : 'Not detected — may need reboot');
   txt('logs-bypass-status', ctrl ? 'Controller running' : 'Controller idle');
   document.getElementById('logs-batt-status')?.classList.toggle('ok', !!ai);
   document.getElementById('logs-games-status')?.classList.toggle('ok', !!mon);
-  if (termEl) termEl.textContent = log || '(boot.log empty or not yet created)';
+  if (termEl) termEl.textContent = log || `(${src} log empty)`;
 }
+function mod_logs_pickSource(el) {
+  document.querySelectorAll('#logs-source-chips .chip').forEach((c) => c.classList.remove('active'));
+  el.classList.add('active');
+  mod_logs_refresh();
+}
+window.mod_logs_pickSource = mod_logs_pickSource;
+
 window.mod_logs_refresh = mod_logs_refresh;
 
 async function mod_logs_copy() {
@@ -1547,21 +1637,31 @@ function rowHtml(title, sub, tag, ok) {
 async function loadHealth() {
   const list = document.getElementById('health-list');
   if (!list) return;
-  const raw = await se(`cat "${CORTEX}/health/last.txt" 2>/dev/null`, '');
-  if (!raw) {
+  const raw = await se(`for f in "${CORTEX}"/health/*.status; do [ -f "$f" ] || continue; echo "##$(basename "$f" .status)"; cat "$f"; echo; done`, '');
+  if (!raw.trim()) {
     list.innerHTML = '<div class="row"><div style="font-size:13px;font-weight:700;">No health report yet</div><span class="tag ok">OK</span></div>';
     return;
   }
-  const lines = raw.split(/\n/).filter(Boolean);
-  list.innerHTML = lines.map((line) => {
-    const fail = /fail|error|skip|unavail/i.test(line);
-    return rowHtml(line.replace(/\|/g, ' — '), '', fail ? 'Adapted' : 'OK', !fail);
-  }).join('');
+  const html = [];
+  let sub = '';
+  raw.split(/\n/).forEach((line) => {
+    if (line.startsWith('##')) { sub = line.slice(2); return; }
+    if (!line.trim()) return;
+    const parts = line.split('|');
+    const name = parts[1] || line;
+    const ok = parts[2] === '1';
+    const detail = parts[3] || '';
+    html.push(rowHtml((sub ? sub + ' · ' : '') + name, detail, ok ? 'OK' : 'Failed', ok));
+  });
+  list.innerHTML = html.join('') || '<div class="row"><div style="font-size:13px;font-weight:700;">No health report yet</div><span class="tag ok">OK</span></div>';
 }
 
 async function refreshHealthBanner() {
-  const raw = await se(`cat "${CORTEX}/health/last.txt" 2>/dev/null`, '');
-  const fails = raw.split(/\n/).filter((l) => /fail|error|skip|unavail/i.test(l)).length;
+  const raw = await se(`cat "${CORTEX}"/health/*.status 2>/dev/null`, '');
+  const fails = raw.split(/\n/).filter((l) => {
+    const p = l.split('|');
+    return p.length >= 3 && p[2] === '0';
+  }).length;
   const banner = document.getElementById('home-health-banner');
   if (!banner) return;
   if (fails > 0) {
@@ -1574,11 +1674,15 @@ async function loadCompat() {
   const list = document.getElementById('compat-list');
   if (!list) return;
   const raw = await se(`cat "${CORTEX}/device/capabilities.txt" 2>/dev/null; sh "${CORTEX}/device/capability_probe.sh" 2>/dev/null | tail -20`, '');
+  const homeRow = document.getElementById('home-row-compat');
   if (!raw) {
-    list.innerHTML = '<div class="row"><div style="font-size:13px;font-weight:700;">Probe not run yet</div><span class="tag warn">Pending</span></div>';
-    txt('home-sub-compat', 'Not probed yet');
+    if (homeRow) homeRow.style.display = 'none';
+    list.innerHTML = '<div class="row"><div style="font-size:13px;font-weight:700;">No probe results yet</div><span class="tag warn">Hidden on Home until probed</span></div>';
+    txt('home-sub-compat', '—');
     return;
   }
+  if (homeRow) homeRow.style.display = '';
+
   const lines = raw.split(/\n/).filter(Boolean).slice(-12);
   list.innerHTML = lines.map((line) => {
     const ok = /yes|ok|supported|1$/i.test(line);
@@ -1616,11 +1720,15 @@ async function loadPreloadList() {
   if (!list) return;
   const raw = await se(`ls "${CORTEX}/games/profiles" 2>/dev/null`, '');
   const files = raw.split(/\n/).filter((f) => f.endsWith('.txt'));
+  const homeRow = document.getElementById('home-row-preload');
   if (!files.length) {
+    if (homeRow) homeRow.style.display = 'none';
     list.innerHTML = '<div class="row"><div style="font-size:13px;font-weight:700;">No seeded profiles yet</div></div>';
-    txt('home-sub-preload', 'None');
+    txt('home-sub-preload', '—');
     return;
   }
+  if (homeRow) homeRow.style.display = '';
+
   list.innerHTML = files.slice(0, 40).map((f) => {
     const pkg = f.replace(/\.txt$/, '').replace(/-/g, '.');
     return `<div class="row"><div style="font-size:13px;font-weight:700;">${pkg}</div><span style="font-size:11px;color:var(--lavender-pale);">profile</span></div>`;
@@ -1665,6 +1773,8 @@ async function loadSensor() {
   const en = await se(`cat "${CORTEX}/sensor/enabled.txt"`, 'off');
   setOn(document.getElementById('sensor-tog-sensor'), en === 'on');
   txt('sensor-sensor-state', en === 'on' ? 'Armed' : 'Idle');
+  const homeRow = document.getElementById('home-row-sensor');
+  if (homeRow) homeRow.style.display = en === 'on' ? '' : 'none';
 }
 
 async function mod_bypass_runScan() {

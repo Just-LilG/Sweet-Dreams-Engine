@@ -6,7 +6,7 @@ export const FRPERF   = '/data/local/tmp/Frieren_Perf';
 export const FILES = {
     prop:          `${MOD_ROOT}/module.prop`,
     profile:       `${CORTEX}/cpu/profile.txt`,
-    thermalStatus: `${CORTEX}/thermal/status.txt`,
+    thermalArmed: `${CORTEX}/thermal/armed.txt`,
     touchStatus:   `${CORTEX}/touch/status.txt`,
     netStatus:     `${CORTEX}/net/status.txt`,
     thermalApply:  `${CORTEX}/thermal/apply.sh`,

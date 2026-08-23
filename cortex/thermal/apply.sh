@@ -23,6 +23,7 @@ FAKE_DIR="$CORTEX/thermal/fake"
 MOUNT_LIST="$CORTEX/thermal/mounted.list"
 
 . "$CORTEX/health/track.sh"
+. "$CORTEX/thermal/state.sh"
 
 THERMAL_MODE="${2:-$(cat "$CORTEX/thermal/mode.txt" 2>/dev/null || echo "extreme")}"
 
@@ -36,7 +37,8 @@ log_t() { echo "[THERMAL] $1" | tee -a "$LOGFILE"; }
 # ----------------------------------------------------------------------------─
 read_spoof_c() {
     local C
-    C=$(cat "$CORTEX/thermal/spoof_c.txt" 2>/dev/null | tr -dc '0-9')
+    C=$(cat "$CORTEX/thermal/spoof_c_session.txt" 2>/dev/null | tr -dc '0-9')
+    [ -z "$C" ] && C=$(cat "$CORTEX/thermal/spoof_c.txt" 2>/dev/null | tr -dc '0-9')
     [ -z "$C" ] && C=27
     [ "$C" -gt 45 ] 2>/dev/null && C=45
     [ "$C" -lt 0 ] 2>/dev/null && C=0
@@ -69,7 +71,29 @@ bind_spoof() {
         return 0
     fi
     # Some kernels refuse bind on sysfs; try writing the value (may be ignored).
-    cat "$src" > "$target" 2>/dev/null
+    if cat "$src" > "$target" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+verify_spoof_readback() {
+    local C milli z v match=0 seen=0
+    C=${SPOOF_C:-$(read_spoof_c)}
+    milli=$((C * 1000))
+    for z in /sys/class/thermal/thermal_zone0/temp /sys/class/thermal/thermal_zone1/temp /sys/class/thermal/thermal_zone2/temp; do
+        [ -r "$z" ] || continue
+        seen=$((seen + 1))
+        v=$(tr -dc '0-9-' < "$z" | head -c 16)
+        [ "$v" = "$milli" ] && match=$((match + 1))
+    done
+    printf 'target_c=%s milli=%s zones_ok=%s zones_seen=%s\n' "$C" "$milli" "$match" "$seen" > "$CORTEX/thermal/last_verify.txt"
+    echo "APPLY_RESULT target=${C}C match=${match}/${seen}"
+    if [ "$seen" -gt 0 ] && [ "$match" -eq 0 ]; then
+        health_check "spoof_verify" 1 "OS not reading ${C}C (0/${seen} zones)"
+    else
+        health_check "spoof_verify" 0 "match ${match}/${seen} at ${C}C"
+    fi
 }
 
 unmount_spoofs() {
@@ -156,6 +180,7 @@ spoof_temp_nodes() {
     if [ "$THERMAL_MODE" = "lite" ]; then
         log_t "Lite: thermal_zone spoofed to ${SPOOF_C}°C — battery/IIO/I2C/hwmon left real"
         health_check "sensor_spoof" 0 "lite ${SPOOF_C}C zones=$OK fail=$FAIL"
+        verify_spoof_readback
         return
     fi
 
@@ -208,6 +233,7 @@ spoof_temp_nodes() {
     fi
 
     log_t "Advanced spoof ${SPOOF_C}°C: ok=$OK iio=$IIO_COUNT i2c=$I2C_COUNT hwmon=$HWMON_COUNT fail=$FAIL"
+    verify_spoof_readback
 }
 
 restore_all_temp_nodes() {
@@ -269,14 +295,15 @@ restore_all_temp_nodes() {
 }
 
 case "$GAME_PHASE" in
-    game_end|restore)
+    game_end|restore|game_end)
         health_start "thermal"
         restore_all_temp_nodes
+        rm -f "$CORTEX/thermal/spoof_c_session.txt"
         health_finish
         log_t "Game ended — thermal protection active"
         exit 0
         ;;
-    game_start)
+    game_start|game_start)
         health_start "thermal"
         kill_thermal_daemons
         spoof_temp_nodes
