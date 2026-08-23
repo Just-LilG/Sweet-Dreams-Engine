@@ -1,3 +1,5 @@
+# LGTL Kill BG whitelist — one package per line
+# Apps listed here are NEVER killed even when Kill BG is enabled
 com.whatsapp
 com.discord
 com.spotify.music
