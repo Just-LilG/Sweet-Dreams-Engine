@@ -1,13 +1,14 @@
 # Changelog
 
-## Unreleased
+## GitHub
+
+- **v2.5.39-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.39-skipmount/SweetDreams-v2_5_39-skipmount.zip)
+- **v2.5.38-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.38-skipmount/SweetDreams-v2_5_38-skipmount.zip)
+
+## v2.5.39-skipmount
 
 - Thermal engine: restore the previous-release bind-mount spoof (OS reads a fake °C) instead of chmod-000 blackout.
 - Thermal Advanced: slider to set the spoofed sensor value (0–45°C, default 27°C like the last public zip). Lite still only spoofs CPU/GPU/board zones.
-
-## GitHub
-
-- **v2.5.38-skipmount** — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.38-skipmount/SweetDreams-v2_5_38-skipmount.zip)
 
 ## v2.5.38-skipmount
 
