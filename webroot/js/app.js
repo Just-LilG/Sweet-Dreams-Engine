@@ -203,6 +203,10 @@ function sdSyncBottomNav(key) {
 }
 
 function loadPanel(key) {
+  if (typeof window._enginePoll === 'number') {
+    clearInterval(window._enginePoll);
+    window._enginePoll = null;
+  }
   const loaders = {
     home: refreshHome,
     games: mod_games_load,
@@ -234,6 +238,12 @@ function loadPanel(key) {
   };
   const fn = loaders[key];
   if (fn) fn();
+  if (key === 'engine') {
+    window._enginePoll = setInterval(() => {
+      const panel = document.getElementById('panel-engine');
+      if (panel && panel.style.display !== 'none') loadEngine();
+    }, 4000);
+  }
 }
 
 function txt(id, value, cls) {
@@ -326,7 +336,13 @@ async function refreshHome() {
   setOn(document.getElementById('home-tog-perf'), rows[8] === 'on');
   txt('home-sub-perf', rows[8] === 'on' ? 'On — MTK scenario API' : 'Off', rows[8] === 'on' ? 'row-desc ok' : 'row-desc');
 
-  txt('home-sub-engine', rows[25] === 'on' ? (rows[26] ? `Live · ${rows[26].split('|')[0] || 'ok'}` : 'On') : 'Off');
+  {
+    const aiOn = rows[25] === 'on';
+    const aiC = engineToken((rows[26] || '').split('|')[0]);
+    txt('home-sub-engine', aiOn
+      ? (aiC ? `Live · ${aiC}°C` : 'On')
+      : (aiC ? `Idle · ${aiC}°C` : 'Off'));
+  }
   txt('home-sub-ram', `${rows[21] === 'on' ? 'ZRAM' : 'No ZRAM'} · ${rows[20] || 'balanced'} mode`);
   txt('home-sub-fps', (rows[11] || '90') + ' Hz');
   const res = rows[13] || 'native';
@@ -1186,16 +1202,35 @@ async function loadAudio() {
 }
 
 /* ── Engine ── */
+function engineToken(v) {
+  const s = String(v || '').trim();
+  if (!s || s === 'off' || s === 'idle' || s === '-') return '';
+  return s;
+}
+
+function engineTempLabel(statusC, sysTenths) {
+  const c = engineToken(statusC);
+  if (c && !Number.isNaN(Number(c))) return c + '°C';
+  const t = parseInt(String(sysTenths || '').trim(), 10);
+  if (!Number.isNaN(t) && t > 0) return (t / 10).toFixed(1) + '°C';
+  return '—';
+}
+
 function mod_engine_toggleEngine() {
   const t = document.getElementById('engine-tog-eng');
   t.classList.toggle('on');
-  write(`${CORTEX}/ai/enabled.txt`, isOn(t) ? 'on' : 'off');
-  toast('Engine: ' + (isOn(t) ? 'on' : 'off'));
+  const on = isOn(t);
+  write(`${CORTEX}/ai/enabled.txt`, on ? 'on' : 'off');
+  if (on) {
+    se(`pgrep -f 'cortex/ai/engine.sh' >/dev/null || nohup sh "${CORTEX}/ai/engine.sh" >> "${MOD}/boot.log" 2>&1 &`, '');
+  }
+  toast('Engine: ' + (on ? 'on' : 'off'));
+  setTimeout(loadEngine, 600);
 }
 window.mod_engine_toggleEngine = mod_engine_toggleEngine;
 
 async function loadEngine() {
-  const [en, st, ov, sched, night, morn, low, log] = await batched([
+  const [en, st, ov, sched, night, morn, low, log, sysTemp, sysCap, sysRam, sysGov, sysProf] = await batched([
     `cat "${CORTEX}/ai/enabled.txt" 2>/dev/null`,
     `cat "${CORTEX}/ai/status.txt" 2>/dev/null`,
     `cat "${CORTEX}/ai/override_active.txt" 2>/dev/null`,
@@ -1204,22 +1239,32 @@ async function loadEngine() {
     `cat "${CORTEX}/ai/schedule_morning_hour.txt" 2>/dev/null`,
     `cat "${CORTEX}/ai/schedule_low_bat_pct.txt" 2>/dev/null`,
     `tail -n 8 "${MOD}/boot.log" 2>/dev/null | grep '\\[AI\\]'`,
+    `cat /sys/class/power_supply/battery/temp 2>/dev/null`,
+    `cat /sys/class/power_supply/battery/capacity 2>/dev/null`,
+    `awk '/MemAvailable/ {print int($2/1024); exit}' /proc/meminfo 2>/dev/null`,
+    `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null`,
+    `cat "${CORTEX}/cpu/profile.txt" 2>/dev/null`,
   ]);
-  setOn(document.getElementById('engine-tog-eng'), en !== 'off');
+  setOn(document.getElementById('engine-tog-eng'), en === 'on');
   setOn(document.getElementById('engine-tog-sched'), sched === 'on');
   const nh = document.getElementById('engine-night-h');
   const mh = document.getElementById('engine-morning-h');
   const lb = document.getElementById('engine-low-bat');
-  if (nh) nh.value = night || '23';
-  if (mh) mh.value = morn || '7';
-  if (lb) lb.value = low || '15';
+  if (nh && document.activeElement !== nh) nh.value = night || '23';
+  if (mh && document.activeElement !== mh) mh.value = morn || '7';
+  if (lb && document.activeElement !== lb) lb.value = low || '15';
   const p = (st || '').split('|');
-  txt('engine-stat-temp', p[0] ? p[0] + '°C' : '—');
-  txt('engine-stat-batt', p[1] ? p[1] + '%' : '—');
-  txt('engine-stat-ram', p[2] ? p[2] + ' MB' : '—');
-  txt('engine-stat-gov', p[3] || '—');
-  txt('engine-stat-profile', p[4] || '—');
-  txt('engine-eng-temp', p[0] ? p[0] + '°C' : '—');
+  const temp = engineTempLabel(p[0], sysTemp);
+  const batt = engineToken(p[1]) || (sysCap && sysCap.trim()) || '';
+  const ram = engineToken(p[2]) || (sysRam && sysRam.trim()) || '';
+  const gov = engineToken(p[3]) || (sysGov && sysGov.trim()) || '';
+  const prof = engineToken(p[4]) || (sysProf && sysProf.trim()) || '';
+  txt('engine-stat-temp', temp);
+  txt('engine-stat-batt', batt ? batt + '%' : '—');
+  txt('engine-stat-ram', ram ? ram + ' MB' : '—');
+  txt('engine-stat-gov', gov || '—');
+  txt('engine-stat-profile', prof || '—');
+  txt('engine-eng-temp', temp);
   const banner = document.getElementById('engine-override-banner');
   if (banner) banner.style.display = ov === 'on' ? 'block' : 'none';
   const logEl = document.getElementById('engine-last-log');
@@ -1252,6 +1297,7 @@ window.mod_engine_applyNow = mod_engine_applyNow;
 function mod_engine_restart() {
   se(`pkill -f "${CORTEX}/ai/engine.sh"; sleep 1; nohup sh "${CORTEX}/ai/engine.sh" >> "${MOD}/boot.log" 2>&1 &`);
   toast('Engine restarted');
+  setTimeout(loadEngine, 1600);
 }
 window.mod_engine_restart = mod_engine_restart;
 

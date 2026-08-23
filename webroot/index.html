@@ -887,6 +887,29 @@ body{font-family:var(--font-body);color:#fff;}
 .screen-thermal .risk-title {font-size:12px;font-weight:800;color:var(--danger);margin-bottom:4px;display:flex;align-items:center;gap:6px;}
 .screen-thermal .risk-body {font-size:11px;color:rgba(255,255,255,.75);line-height:1.6;}
 .screen-thermal .advanced-lock {display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.25);border-radius:var(--radius-md);font-size:12px;font-weight:700;color:rgba(255,255,255,.6);cursor:pointer;}
+.screen-engine .stage {max-width:480px;margin:0 auto;padding:20px;}
+.screen-engine .back {background:rgba(255,255,255,.14);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.2);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.screen-engine .top {display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.screen-engine .top-left {display:flex;align-items:center;gap:12px;}
+.screen-engine .title {font-family:var(--font-display);font-size:18px;font-weight:800;}
+.screen-engine .sub {font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;margin-bottom:18px;}
+.screen-engine .live-badge {display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.18);border-radius:var(--radius-pill);padding:5px 14px;}
+.screen-engine .live-dot {width:6px;height:6px;border-radius:50%;background:var(--lavender);}
+.screen-engine .live-badge span {font-size:12px;font-weight:800;color:var(--lavender-pale);}
+.screen-engine .toggle-row {display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-radius:var(--radius-md);background:rgba(255,255,255,.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.16);margin-bottom:16px;gap:12px;}
+.screen-engine .toggle-title {font-size:14px;font-weight:700;}
+.screen-engine .toggle-desc {font-size:11px;color:rgba(255,255,255,.55);margin-top:3px;}
+.screen-engine .switch {width:44px;height:24px;background:rgba(255,255,255,.15);border-radius:var(--radius-pill);position:relative;cursor:pointer;flex-shrink:0;}
+.screen-engine .switch.on {background:rgba(var(--lavender-rgb),.4);}
+.screen-engine .switch::after {content:'';position:absolute;width:18px;height:18px;background:var(--lavender);top:3px;left:3px;border-radius:50%;transition:left .15s;}
+.screen-engine .switch.on::after {left:23px;background:#fff;}
+.screen-engine .section-title {font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);margin:20px 0 8px;font-weight:700;}
+.screen-engine .stat-box {background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--radius-md);padding:14px 16px;}
+.screen-engine .stat-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px;}
+.screen-engine .stat-row:last-child {border-bottom:none;}
+.screen-engine .stat-label {color:rgba(255,255,255,.55);flex-shrink:0;}
+.screen-engine .stat-val {font-weight:700;text-align:right;}
+.screen-engine input[type=number]{width:56px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:8px;padding:4px 6px;font-size:13px;font-weight:700;text-align:center;color-scheme:dark;}
 .screen-thermal .real-temp-pin {position:sticky;top:0;z-index:5;background:rgba(var(--bg-base-1-rgb),.92);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.16);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
 .screen-thermal input[type=range] {-webkit-appearance:none;width:100%;height:4px;background:rgba(255,255,255,.2);border-radius:2px;outline:none;margin-top:6px;}
 .screen-thermal input[type=range]::-webkit-slider-thumb {-webkit-appearance:none;width:18px;height:18px;background:var(--danger);border-radius:50%;cursor:pointer;}
@@ -1963,11 +1986,11 @@ body{font-family:var(--font-body);color:#fff;}
   </div>
   <div class="stat-box" style="margin-top:8px;">
     <div class="stat-row"><span class="stat-label">Night hour</span>
-      <span class="stat-val"><input id="engine-night-h" type="number" min="0" max="23" value="23" style="width:56px;background:transparent;border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:4px;" onchange="mod_engine_saveSched()"></span></div>
+      <span class="stat-val"><input id="engine-night-h" type="number" min="0" max="23" value="23" onchange="mod_engine_saveSched()"></span></div>
     <div class="stat-row"><span class="stat-label">Morning hour</span>
-      <span class="stat-val"><input id="engine-morning-h" type="number" min="0" max="23" value="7" style="width:56px;background:transparent;border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:4px;" onchange="mod_engine_saveSched()"></span></div>
+      <span class="stat-val"><input id="engine-morning-h" type="number" min="0" max="23" value="7" onchange="mod_engine_saveSched()"></span></div>
     <div class="stat-row"><span class="stat-label">Low-battery %</span>
-      <span class="stat-val"><input id="engine-low-bat" type="number" min="5" max="50" value="15" style="width:56px;background:transparent;border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:4px;" onchange="mod_engine_saveSched()"></span></div>
+      <span class="stat-val"><input id="engine-low-bat" type="number" min="5" max="50" value="15" onchange="mod_engine_saveSched()"></span></div>
   </div>
   <div style="display:flex;gap:8px;margin-top:14px;">
     <button type="button" onclick="mod_engine_applyNow()" style="flex:1;padding:12px;border-radius:12px;background:var(--lavender);border:none;color:var(--ink);font-weight:800;">Apply now</button>
