@@ -1746,7 +1746,7 @@ body{font-family:var(--font-body);color:#fff;}
       <div class="title">Render Scale</div>
     </div>
   </div>
-  <div class="sub">Downscales only the selected game's render surface — the rest of the UI stays sharp.</div>
+  <div class="sub">Uses Android Game Mode downscale (same command as AZenith): only selected games, UI stays sharp. Add games on the Games tab, pick a scale, then fully close and reopen the game.</div>
 
   <div class="res-card active" data-res="native" onclick="mod_renderscale_pickRes(this)">
     <div class="res-icon" style="background:linear-gradient(135deg,#8fe0a8,#5cc47f);"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
@@ -1782,7 +1782,7 @@ body{font-family:var(--font-body);color:#fff;}
   </div>
 
   <div style="margin-top:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--radius-md);padding:12px 14px;">
-    <div style="font-size:11px;color:rgba(255,255,255,.6);line-height:1.6;">Only the GPU render buffer is scaled — UI layout and text are unaffected.</div>
+    <div style="font-size:11px;color:rgba(255,255,255,.6);line-height:1.6;">Same Game Mode API as AZenith (<code>cmd game set --mode 2 --downscale</code>). The game must be on your Games list. Fully close it and open it again after changing scale.</div>
   </div>
 </div>
 </section>

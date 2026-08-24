@@ -8,7 +8,7 @@ MediaTek FPS unlocker and thermal bypass engine for KernelSU / Magisk.
 ## Features
 
 - CPU / GPU / scheduler profiles with optional per-cluster clock ceilings
-- Per-game render scale via Android Game Mode (Android 13+) or `game_overlay` (Android 12 and older)
+- Per-game render scale via the same Android Game Mode path as [AZenith](https://github.com/Liliya2727/AZenith) (`cmd game set --mode 2 --downscale` on Android 13+, `game_overlay` on older)
 - FPS unlock + refresh-rate lock
 - RAM / ZRAM modes, kill-background, game preload
 - Battery charge limiter and optional bypass charging

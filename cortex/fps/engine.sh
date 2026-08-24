@@ -150,25 +150,21 @@ apply_frame_pacing() {
 
 apply_adpf_overlay() {
     local FPS="$1"
-    local PKG
+    local PKG _res
     PKG=$(get_foreground_package)
     [ -z "$PKG" ] && return
-    # Bug fix: this used to call `device_config put` unconditionally on
-    # every single tick regardless of device. `device_config` goes through
-    # the exact same `cmd` dispatcher IPC path as `settings put` - on a
-    # device where that path is broken (see CMD_DISPATCHER_UNRELIABLE
-    # above, and settings_put()'s use of the same flag), every single call
-    # here was guaranteed to fail with "Failed transaction", logged at full
-    # volume every ~10-15s for the entire duration of every game session.
-    # There's no ContentProvider equivalent for device_config (unlike
-    # settings, which has the content:// fallback), so on a device with
-    # this mitigation active we just skip it - the ADPF hint is a nice-to-have
-    # for supported devices, not a required step, and this device's own
-    # boot probe already told us the dispatcher doesn't work here.
+    _res="native"
+    # Keep downscaleFactor in the same overlay line. A fps-only write
+    # used to wipe AZenith-style resolution downscale every 2s.
     if ! grep -qx "CMD_DISPATCHER_UNRELIABLE" "$CORTEX/device/active.txt" 2>/dev/null; then
-        device_config put game_overlay "$PKG" "mode=2,fps=${FPS}" 2>/dev/null
+        . "$CORTEX/display/game_mode.sh"
+        _res=$(resolve_scale "$PKG")
+        write_game_overlay "$PKG" "$_res" "$FPS"
+        if [ "$_res" != "native" ]; then
+            android_has_game_set && azenith_game_set "$PKG" "$_res" "$FPS"
+        fi
     fi
-    log_fps "ADPF game overlay: ${PKG} @ ${FPS} fps"
+    log_fps "ADPF game overlay: ${PKG} @ ${FPS} fps (scale=${_res})"
 }
 
 restore_defaults() {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Render scale: match AZenith (`cmd game set --mode 2 --downscale`, combined `game_overlay` with FPS so the cap no longer wipes downscale). Global scale is no longer ignored because seeded profiles said `native`.
+
 ## v2.5.41
 
 - Settings persist under `/data/adb/sweet_dreams_persist` so a zip flash no longer resets WebUI choices.

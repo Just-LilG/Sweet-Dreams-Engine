@@ -1020,8 +1020,13 @@ function mod_renderscale_pickRes(el) {
   const res = el.dataset.res;
   write(`${CORTEX}/display/resolution.txt`, res);
   txt('home-sub-res', res === 'native' ? 'Native — Full' : Math.round(parseFloat(res) * 100) + '%');
-  se(`for p in $(cat "${CORTEX}/games/selected.txt" 2>/dev/null); do [ -n "$p" ] && sh "${CORTEX}/display/apply_resolution.sh" '${res}' "$p"; done`);
-  toast('Render scale: ' + (res === 'native' ? 'Native' : res));
+  se(`sh "${CORTEX}/display/apply_selected.sh" '${res}'`).then((out) => {
+    if (String(out || '').includes('NO_GAMES')) {
+      toast('Add games on the Games tab — scale applies to those packages');
+    } else {
+      toast('Render scale: ' + (res === 'native' ? 'Native' : Math.round(parseFloat(res) * 100) + '%') + ' — reopen the game if it is already open');
+    }
+  });
 }
 window.mod_renderscale_pickRes = mod_renderscale_pickRes;
 

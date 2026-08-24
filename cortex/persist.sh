@@ -13,7 +13,7 @@ mkdir -p "$PERSIST" 2>/dev/null
 
 is_live_file() {
     case "$1" in
-        */health/*|*/fake/*|*/icon_cache/*|*/label_cache.txt|*/last_verify.txt|*/mounted.list|*/session.log|*/status_live.txt|*/resolution_applied_pkg.txt|*/resolution_relaunch_grace.txt|*/spoof_c_session.txt|*/override_active.txt|*/saved_profile.txt)
+        */health/*|*/fake/*|*/icon_cache/*|*/label_cache.txt|*/last_verify.txt|*/mounted.list|*/session.log|*/status_live.txt|*/resolution_applied_pkg.txt|*/resolution_applied_factor.txt|*/resolution_relaunch_grace.txt|*/spoof_c_session.txt|*/override_active.txt|*/saved_profile.txt)
             return 0
             ;;
     esac

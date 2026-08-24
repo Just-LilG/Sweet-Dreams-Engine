@@ -47,7 +47,7 @@ write_profile_if_missing() {
         echo "fps=$FPS"
         echo "rr_lock=$RR_LOCK"
         echo "fps_lock=$FPS_LOCK"
-        echo "resolution=$RES"
+        echo "resolution=default"
         echo "seeded=1"
     } > "$FILE"
 }

@@ -15,6 +15,7 @@ echo "$$" > "$RUNDIR/game_monitor.pid"
 log_p() { echo "[$(date '+%H:%M:%S')] $1" >> "$LOGFILE"; }
 
 . "$CORTEX/thermal/state.sh"
+. "$CORTEX/display/game_mode.sh"
 SESSION_LOG="$CORTEX/daemons/session.log"
 mkdir -p "$CORTEX/daemons" "$CORTEX/games"
 log_s() {
@@ -346,14 +347,12 @@ if [ -n "$RECOVERED_GAME" ]; then
             # until the user closed and reopened it. Checking the profile
             # file here too keeps recovery consistent with the main loop.
             RECOVER_PROFILE_FILE="$CORTEX/games/profiles/$(echo "$RECOVERED_GAME" | tr '.' '-').txt"
-            RES_TARGET_RECOVER=$(cat "$CORTEX/display/resolution.txt" 2>/dev/null || echo "native")
+            RES_TARGET_RECOVER=$(resolve_scale "$RECOVERED_GAME")
             THERMAL_MODE_RECOVER=""
             if [ -f "$RECOVER_PROFILE_FILE" ]; then
-                RES_FROM_PROFILE=$(grep "^resolution=" "$RECOVER_PROFILE_FILE" 2>/dev/null | cut -d= -f2-)
-                [ -n "$RES_FROM_PROFILE" ] && RES_TARGET_RECOVER="$RES_FROM_PROFILE"
                 THERMAL_MODE_RECOVER=$(grep "^thermal_mode=" "$RECOVER_PROFILE_FILE" 2>/dev/null | cut -d= -f2-)
             fi
-            [ "$RES_TARGET_RECOVER" != "native" ] && sh "$CORTEX/display/apply_resolution.sh" "$RES_TARGET_RECOVER" "$RECOVERED_GAME" 2>/dev/null
+            [ "$RES_TARGET_RECOVER" != "native" ] && SKIP_RESTART=1 sh "$CORTEX/display/apply_resolution.sh" "$RES_TARGET_RECOVER" "$RECOVERED_GAME" 2>/dev/null
             # Same reasoning applies to thermal spoof - if this daemon
             # instance is the first to ever see this session (module
             # updated/daemon restarted mid-game), nobody has mounted the
@@ -532,11 +531,7 @@ while true; do
             # - so those all belong in Phase 3, after the game relaunches.
             # Synchronous: the grace-period flag it sets must exist before
             # the daemon's next loop iteration checks for a game exit.
-            if [ -n "$RES_OVERRIDE" ]; then
-                RES_TARGET="$RES_OVERRIDE"
-            else
-                RES_TARGET=$(cat "$CORTEX/display/resolution.txt" 2>/dev/null || echo "native")
-            fi
+            RES_TARGET=$(resolve_scale "$RUNNING_GAME")
             [ "$RES_TARGET" != "native" ] && sh "$CORTEX/display/apply_resolution.sh" "$RES_TARGET" "$RUNNING_GAME" 2>/dev/null
             echo "[TIMING] apply_resolution.sh done (sync): $(( $(_now_ms) - _LAUNCH_T0 ))ms" >> "$LOGFILE"
 
@@ -814,7 +809,7 @@ while true; do
             GRACE_TS=$(cat "$CORTEX/display/resolution_relaunch_grace.txt" 2>/dev/null || echo "0")
             NOW_TS=$(date +%s)
             GRACE_AGE=$((NOW_TS - GRACE_TS))
-            if [ "$GRACE_AGE" -lt 8 ] && [ "$(cat "$CORTEX/display/resolution_applied_pkg.txt" 2>/dev/null)" = "$LAST_GAME" ]; then
+            if [ "$GRACE_AGE" -lt 20 ] && [ "$(cat "$CORTEX/display/resolution_applied_pkg.txt" 2>/dev/null)" = "$LAST_GAME" ]; then
                 sleep 2
                 continue
             fi
