@@ -2,7 +2,7 @@
 
 ## v2.6.1
 
-- WebUI “Liquid glass” toggle now switches to **solid panel colors** (not just removing blur). Off = opaque surfaces; On = frosted glass.
+- WebUI “Liquid glass” is an appearance preference only (not a game/engine feature): On = frosted glass; Off = solid opaque panel colors throughout the WebUI.
 
 ## v2.6.0
 

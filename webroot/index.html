@@ -169,7 +169,7 @@ body{font-family:var(--font-body);color:#fff;}
   backdrop-filter:none !important;
   -webkit-backdrop-filter:none !important;
 }
-/* Solid UI mode: replace frosted glass with opaque surfaces (WebUI preference, not a game feature). */
+/* WebUI look only: Off = solid opaque panels instead of liquid glass. Not a game/engine feature. */
 :root[data-blur="off"]{
   --bg-glow-1:transparent;
   --bg-glow-2:transparent;
@@ -216,6 +216,12 @@ body{font-family:var(--font-body);color:#fff;}
 :root[data-blur="off"] .search-row input,
 :root[data-blur="off"] .status-pill,
 :root[data-blur="off"] .quick-card,
+:root[data-blur="off"] .status-box,
+:root[data-blur="off"] .dns-inputs input,
+:root[data-blur="off"] .icon-well,
+:root[data-blur="off"] .game-icon,
+:root[data-blur="off"] .screen-battery .row,
+:root[data-blur="off"] .screen-network .row,
 :root[data-blur="off"] #sd-bottom-nav .nav,
 :root[data-blur="off"] [class*="toggle-row"],
 :root[data-blur="off"] [class*="stat-box"],
@@ -245,6 +251,8 @@ body{font-family:var(--font-body);color:#fff;}
 :root[data-blur="off"] .header-icon-btn,
 :root[data-blur="off"] .back,
 :root[data-blur="off"] .live-badge,
+:root[data-blur="off"] .icon-well,
+:root[data-blur="off"] .game-icon,
 :root[data-blur="off"] .chip:not(.active){
   background:var(--solid-panel-2) !important;
 }
@@ -2414,20 +2422,18 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   <div class="theme-grid">
     <div class="theme-card active" id="theme-card-lavender" onclick="setTheme('lavender')">
       <div class="theme-swatch sw-lavender"><div class="theme-check">✓</div></div>
-      <div class="theme-label">Lavender Glass</div>
+      <div class="theme-label">Lavender</div>
     </div>
     <div class="theme-card" id="theme-card-vanilla" onclick="setTheme('vanilla')">
       <div class="theme-swatch sw-vanilla"><div class="theme-check">✓</div></div>
-      <div class="theme-label">Vanilla Glass</div>
+      <div class="theme-label">Vanilla</div>
     </div>
   </div>
-  <div class="note">Changes the app's background, accent color, and shell chrome. Saved automatically for next time you open Sweet Dreams.</div>
-
-  <div class="section-title">Display</div>
-  <div class="toggle-row">
-    <div><div class="toggle-title">Liquid glass</div><div class="toggle-desc">On = frosted glass panels. Off = solid colors in the WebUI</div></div>
+  <div class="toggle-row" style="margin-top:12px;">
+    <div><div class="toggle-title">Liquid glass</div><div class="toggle-desc">WebUI look only. On = frosted glass. Off = solid panel colors</div></div>
     <div class="switch on" id="settings-tog-blur" onclick="toggleBlur(this)"></div>
   </div>
+  <div class="note">Theme and liquid glass only change how the WebUI looks. They are not game or engine features.</div>
 
   <div class="section-title">Auto Schedule</div>
   <div class="toggle-row">
