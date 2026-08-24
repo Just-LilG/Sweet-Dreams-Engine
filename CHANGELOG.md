@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.42
+
+- Engine Live Readout: labels no longer jam into `off°C`; idle telemetry plus sysfs fallback; 4s poll.
+- Render scale: same Game Mode path as AZenith (`cmd game set --mode 2 --downscale`). FPS lock no longer wipes `downscaleFactor`. Seeded `resolution=native` no longer ignores the WebUI scale.
+- Fully close and reopen the game after changing render scale.
+
 ## v2.5.41
 
 - Settings persist under `/data/adb/sweet_dreams_persist` so a zip flash no longer resets WebUI choices.
@@ -11,6 +17,7 @@
 
 ## GitHub
 
+- **v2.5.42** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.42/SweetDreams-v2_5_42.zip)
 - **v2.5.41** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.41/SweetDreams-v2_5_41.zip)
 - **v2.5.40** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.40/SweetDreams-v2_5_40.zip)
 - **v2.5.39-skipmount** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.39-skipmount/SweetDreams-v2_5_39-skipmount.zip)
