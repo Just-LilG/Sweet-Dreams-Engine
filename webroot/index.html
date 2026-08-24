@@ -155,6 +155,20 @@ body{font-family:var(--font-body);color:#fff;}
 .screen-home .nav-item .nav-label {font-size:10px;font-weight:700;}
 .screen-home .apply-fab {width:52px;height:52px;border-radius:50%;background:var(--lavender);border:none;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 8px 24px rgba(var(--lavender-rgb),.4);}
 .screen-home .apply-fab svg {stroke:var(--ink);}
+/* Shared bottom nav lives outside panels so Games/Logs feel like tabs */
+#sd-bottom-nav.nav-wrap {position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:10px;padding:14px 20px max(18px,env(safe-area-inset-bottom,0px));background:linear-gradient(to top,rgba(var(--bg-base-1-rgb),.96) 0%,rgba(var(--bg-base-1-rgb),.75) 55%,rgba(var(--bg-base-1-rgb),0) 100%);z-index:60;}
+#sd-bottom-nav .nav {display:flex;background:rgba(255,255,255,.12);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.18);border-radius:var(--radius-pill);padding:6px;gap:2px;}
+#sd-bottom-nav .nav-item {display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 22px;border-radius:var(--radius-pill);cursor:pointer;color:rgba(255,255,255,.55);}
+#sd-bottom-nav .nav-item svg {stroke:rgba(255,255,255,.55);width:20px;height:20px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+#sd-bottom-nav .nav-item.active {background:var(--lavender);color:var(--ink);}
+#sd-bottom-nav .nav-item.active svg {stroke:var(--ink);}
+#sd-bottom-nav .nav-item .nav-label {font-size:10px;font-weight:700;}
+#sd-bottom-nav .apply-fab {width:52px;height:52px;border-radius:50%;background:var(--lavender);border:none;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 8px 24px rgba(var(--lavender-rgb),.4);}
+#sd-bottom-nav .apply-fab svg {stroke:var(--ink);}
+:root[data-blur="off"] *,:root[data-blur="off"] *::before,:root[data-blur="off"] *::after{
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
 .screen-cpu .stage {max-width:480px;margin:0 auto;padding:20px;}
 .screen-cpu .back {background:rgba(255,255,255,.14);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.2);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
 .screen-cpu .section-title {font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);margin:22px 0 8px;font-weight:700;}
@@ -968,6 +982,9 @@ body{font-family:var(--font-body);color:#fff;}
   try { saved = localStorage.getItem('sd_theme'); } catch(e) {}
   var theme = saved || 'lavender';
   document.documentElement.setAttribute('data-theme', theme);
+  var blur = null;
+  try { blur = localStorage.getItem('sd_blur'); } catch(e) {}
+  if (blur === 'off') document.documentElement.setAttribute('data-blur', 'off');
 })();
 </script>
 <section id="panel-home" class="screen screen-home">
@@ -1205,32 +1222,11 @@ body{font-family:var(--font-body);color:#fff;}
 
 </div>
 
-<div class="nav-wrap">
-  <div class="nav">
-    <div class="nav-item active" onclick="shellNav('home')">
-      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      <span class="nav-label">Home</span>
-    </div>
-    <div class="nav-item" onclick="shellNav('games')">
-      <svg viewBox="0 0 24 24"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
-      <span class="nav-label">Games</span>
-    </div>
-    <div class="nav-item" onclick="shellNav('logs')">
-      <svg viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h1"/><rect x="5" y="3" width="14" height="18" rx="2"/></svg>
-      <span class="nav-label">Logs</span>
-    </div>
-  </div>
-  <button class="apply-fab" id="apply-fab" title="Apply all tweaks" onclick="applyAll()">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-  </button>
-</div>
-
 </section>
 
 <section id="panel-games" class="screen screen-games" style="display:none;">
 <style>
-.screen-games .stage{max-width:480px;margin:0 auto;padding:20px;padding-bottom:80px;}
-.screen-games .back{background:rgba(255,255,255,.14);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.2);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.screen-games .stage{max-width:480px;margin:0 auto;padding:20px;padding-bottom:110px;}
 .screen-games .top{display:flex;align-items:center;gap:12px;margin-bottom:4px;}
 .screen-games .title{font-family:var(--font-display);font-size:18px;font-weight:800;color:#fff;}
 .screen-games .sub{font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;margin:14px 0 18px;}
@@ -1253,7 +1249,6 @@ body{font-family:var(--font-body);color:#fff;}
 </style>
 <div class="stage">
   <div class="top">
-    <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
     <div class="title">Game Hub</div>
   </div>
   <div class="sub">Select which apps get the boost treatment (kill background apps, refresh lock, sensor optimizer, ping stabilizer) when they launch.</div>
@@ -1276,8 +1271,7 @@ body{font-family:var(--font-body);color:#fff;}
 
 <section id="panel-logs" class="screen screen-logs" style="display:none;">
 <style>
-.screen-logs .stage{max-width:480px;margin:0 auto;padding:20px;padding-bottom:80px;}
-.screen-logs .back{background:rgba(255,255,255,.14);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.2);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.screen-logs .stage{max-width:480px;margin:0 auto;padding:20px;padding-bottom:110px;}
 .screen-logs .top{display:flex;align-items:center;gap:12px;margin-bottom:4px;}
 .screen-logs .title{font-family:var(--font-display);font-size:18px;font-weight:800;color:#fff;}
 .screen-logs .sub{font-size:12px;color:rgba(255,255,255,.6);line-height:1.6;margin:14px 0 18px;}
@@ -1294,7 +1288,6 @@ body{font-family:var(--font-body);color:#fff;}
 </style>
 <div class="stage">
   <div class="top">
-    <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
     <div class="title">System Log</div>
   </div>
   <div class="sub">Runtime output from service.sh and its background loops — this is the actual log Sweet Dreams writes to, not simulated text.</div>
@@ -1326,7 +1319,7 @@ body{font-family:var(--font-body);color:#fff;}
 
 <div class="stage">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-    <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+    <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
     <div>
       <div style="font-family:var(--font-display);font-size:18px;font-weight:800;">CPU</div>
       <div style="font-size:12px;color:rgba(255,255,255,.6);" id="cpu-chip-sub">Detecting clusters…</div>
@@ -1386,7 +1379,7 @@ body{font-family:var(--font-body);color:#fff;}
 
 <div class="stage">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-    <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+    <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
     <div>
       <div style="font-family:var(--font-display);font-size:18px;font-weight:800;">GPU</div>
       <div style="font-size:12px;color:rgba(255,255,255,.6);" id="gpu-chip-sub">Detecting GPU…</div>
@@ -1448,7 +1441,7 @@ body{font-family:var(--font-body);color:#fff;}
 <section id="panel-ram" class="screen screen-ram" style="display:none;">
 
 <div class="stage">
-  <div class="top"><div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div><div class="title">Memory Manager</div></div>
+  <div class="top"><div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div><div class="title">Memory Manager</div></div>
 
   <div class="glass">
     <div class="bar-label"><span>Physical RAM</span><span id="ram-phys-txt">—</span></div>
@@ -1496,7 +1489,7 @@ body{font-family:var(--font-body);color:#fff;}
 
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Storage Cleaner</div>
     </div>
     <div class="live-badge"><div class="live-dot"></div><span id="storage-free-badge">—</span></div>
@@ -1525,7 +1518,7 @@ body{font-family:var(--font-body);color:#fff;}
 
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Battery Limiter</div>
     </div>
     <div class="live-badge"><span id="battery-batt-pct">—%</span></div>
@@ -1563,7 +1556,7 @@ body{font-family:var(--font-body);color:#fff;}
 
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Network</div>
     </div>
     <div class="live-badge"><div class="live-dot"></div><span id="network-live-cc">—</span></div>
@@ -1635,7 +1628,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
 
   <div class="top">
-    <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+    <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
     <div class="title">Kill Background Apps</div>
   </div>
 
@@ -1678,7 +1671,7 @@ body{font-family:var(--font-body);color:#fff;}
 
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Refresh Rate</div>
     </div>
     <div class="live-badge"><div class="live-dot"></div><span id="refresh-rr-live-hz">90 Hz</span><span class="status" id="refresh-rr-live-status">Free</span></div>
@@ -1742,7 +1735,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Render Scale</div>
     </div>
   </div>
@@ -1792,7 +1785,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Animation Scale</div>
     </div>
   </div>
@@ -1813,7 +1806,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Touch Engine</div>
     </div>
   </div>
@@ -1872,7 +1865,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Audio Latency Tuner</div>
     </div>
     <div class="live-badge"><div class="live-dot"></div><span id="audio-live-state">Off</span></div>
@@ -1915,7 +1908,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Notifications</div>
     </div>
   </div>
@@ -1954,7 +1947,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Sweet Dreams Engine</div>
     </div>
     <div class="live-badge"><div class="live-dot"></div><span id="engine-eng-temp">—</span></div>
@@ -2005,7 +1998,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">System Health</div>
     </div>
   </div>
@@ -2021,7 +2014,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Device Compatibility</div>
     </div>
   </div>
@@ -2037,7 +2030,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Other Tuning Modules</div>
     </div>
   </div>
@@ -2058,7 +2051,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Preloaded Game List</div>
     </div>
   </div>
@@ -2074,7 +2067,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Game Preload</div>
     </div>
   </div>
@@ -2106,7 +2099,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Sensor Optimizer</div>
     </div>
     <div class="live-badge"><div class="live-dot"></div><span id="sensor-sensor-state">Idle</span></div>
@@ -2148,7 +2141,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Bypass Charging</div>
     </div>
   </div>
@@ -2180,7 +2173,7 @@ body{font-family:var(--font-body);color:#fff;}
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Thermal Spoof</div>
     </div>
     <div class="live-badge"><div class="live-dot" style="background:var(--danger);"></div><span id="thermal-th-state" style="color:var(--danger);">Off</span></div>
@@ -2251,7 +2244,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 <div class="stage">
   <div class="top">
     <div class="top-left">
-      <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+      <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
       <div class="title">Device Spoof</div>
     </div>
     <div class="live-badge"><div class="live-dot" style="background:var(--danger);"></div><span id="devicespoof-spoof-state" style="color:var(--danger);">Off</span></div>
@@ -2328,7 +2321,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 </style>
 <div class="stage">
   <div class="top">
-    <div class="back" onclick="shellNav('home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+    <div class="back" onclick="shellBack()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
     <div class="title">Settings</div>
   </div>
 
@@ -2344,6 +2337,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
     </div>
   </div>
   <div class="note">Changes the app's background, accent color, and shell chrome. Saved automatically for next time you open Sweet Dreams.</div>
+
+  <div class="section-title">Display</div>
+  <div class="toggle-row">
+    <div><div class="toggle-title">Liquid glass blur</div><div class="toggle-desc">Turn off backdrop blur for a flatter, faster UI</div></div>
+    <div class="switch on" id="settings-tog-blur" onclick="toggleBlur(this)"></div>
+  </div>
 
   <div class="section-title">Auto Schedule</div>
   <div class="toggle-row">
@@ -2370,6 +2369,27 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 </div>
 </section>
 </div>
+
+<div class="nav-wrap" id="sd-bottom-nav">
+  <div class="nav">
+    <div class="nav-item active" onclick="shellNav('home')">
+      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span class="nav-label">Home</span>
+    </div>
+    <div class="nav-item" onclick="shellNav('games')">
+      <svg viewBox="0 0 24 24"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+      <span class="nav-label">Games</span>
+    </div>
+    <div class="nav-item" onclick="shellNav('logs')">
+      <svg viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h1"/><rect x="5" y="3" width="14" height="18" rx="2"/></svg>
+      <span class="nav-label">Logs</span>
+    </div>
+  </div>
+  <button class="apply-fab" id="apply-fab" title="Apply all tweaks" onclick="applyAll()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+  </button>
+</div>
+
 <div class="sd-toast" id="sd-toast"></div>
 <script src="js/app.js"></script>
 </body>

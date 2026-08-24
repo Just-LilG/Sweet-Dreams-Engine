@@ -177,7 +177,9 @@ window.setTheme = setTheme;
 window.sdPickChip = sdPickChip;
 window.sdPickMode = sdPickMode;
 
-function shellNav(key) {
+const PRIMARY_TABS = new Set(['home', 'games', 'logs']);
+
+function showPanel(key) {
   document.querySelectorAll('.screen').forEach((s) => { s.style.display = 'none'; });
   const target = document.getElementById('panel-' + key);
   if (target) {
@@ -186,18 +188,52 @@ function shellNav(key) {
     if (scroller) scroller.scrollTop = 0;
     else window.scrollTo(0, 0);
   }
-  try { history.pushState({ panel: key }, '', '#' + key); } catch (e) {}
+  const nav = document.getElementById('sd-bottom-nav');
+  if (nav) nav.style.display = PRIMARY_TABS.has(key) ? '' : 'none';
   sdSyncBottomNav(key);
   const fab = document.getElementById('apply-fab');
   if (fab) fab.style.display = key === 'home' ? '' : 'none';
   loadPanel(key);
 }
+
+function shellNav(key, opts = {}) {
+  const replace = opts.replace === true || PRIMARY_TABS.has(key);
+  showPanel(key);
+  try {
+    if (replace) history.replaceState({ panel: key }, '', '#' + key);
+    else history.pushState({ panel: key }, '', '#' + key);
+  } catch (e) {}
+}
 window.shellNav = shellNav;
+
+function shellBack() {
+  // Prefer popping one history entry so the phone back stack stays clean.
+  if (history.state && history.state.panel && history.state.panel !== 'home') {
+    try { history.back(); return; } catch (e) {}
+  }
+  shellNav('home', { replace: true });
+}
+window.shellBack = shellBack;
+
+function setBlurEnabled(on) {
+  if (on) document.documentElement.removeAttribute('data-blur');
+  else document.documentElement.setAttribute('data-blur', 'off');
+  try { localStorage.setItem('sd_blur', on ? 'on' : 'off'); } catch (e) {}
+  se(`mkdir -p "${CORTEX}/settings" && echo '${on ? 'on' : 'off'}' > "${CORTEX}/settings/blur.txt"`);
+  setOn(document.getElementById('settings-tog-blur'), on);
+}
+
+function toggleBlur(el) {
+  el.classList.toggle('on');
+  setBlurEnabled(isOn(el));
+  toast(isOn(el) ? 'Liquid glass on' : 'Blur off');
+}
+window.toggleBlur = toggleBlur;
 
 function sdSyncBottomNav(key) {
   const tabMap = { home: 0, games: 1, logs: 2 };
   if (!(key in tabMap)) return;
-  document.querySelectorAll('.nav-wrap .nav-item').forEach((el, i) => {
+  document.querySelectorAll('#sd-bottom-nav .nav-item').forEach((el, i) => {
     el.classList.toggle('active', i === tabMap[key]);
   });
 }
@@ -1555,7 +1591,7 @@ async function saveSpoofAssignment() {
   }
   await writeLines(`${CORTEX}/games/spoof_assignments.txt`, lines);
   renderSpoofDetails(deviceId);
-  se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"`);
+  se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"; pkill -f "${MOD}/controller" 2>/dev/null; sleep 1; nohup "${MOD}/controller" >/dev/null 2>&1 &`);
   toast(deviceId === 'off' ? 'Spoof removed' : `${_spoofPkg.split('.').pop()} → ${deviceId}`);
 }
 
@@ -2026,7 +2062,7 @@ async function promptSmartCharge(key) {
 window.promptSmartCharge = promptSmartCharge;
 
 async function loadSettings() {
-  const [sched, night, morning, bat, smart, trickle, hour, rotate] = await batched([
+  const [sched, night, morning, bat, smart, trickle, hour, rotate, blur] = await batched([
     `cat "${CORTEX}/ai/schedule_enabled.txt" 2>/dev/null`,
     `cat "${CORTEX}/ai/schedule_night_hour.txt" 2>/dev/null`,
     `cat "${CORTEX}/ai/schedule_morning_hour.txt" 2>/dev/null`,
@@ -2035,10 +2071,12 @@ async function loadSettings() {
     `cat "${CORTEX}/battery/smart_charge_trickle.txt" 2>/dev/null`,
     `cat "${CORTEX}/battery/smart_charge_full_hour.txt" 2>/dev/null`,
     `cat "${CORTEX}/games/spoof_rotate.txt" 2>/dev/null`,
+    `cat "${CORTEX}/settings/blur.txt" 2>/dev/null`,
   ]);
   setOn(document.getElementById('settings-tog-sched'), sched === 'on');
   setOn(document.getElementById('settings-tog-smartchg'), smart === 'on');
   setOn(document.getElementById('settings-tog-rotate'), rotate === 'on');
+  setOn(document.getElementById('settings-tog-blur'), blur !== 'off');
   txt('settings-sched-night', `${night || '23'}:00`);
   txt('settings-sched-morning', `${morning || '7'}:00`);
   txt('settings-sched-bat', `${bat || '15'}%`);
@@ -2048,22 +2086,25 @@ async function loadSettings() {
 
 window.addEventListener('popstate', (e) => {
   const key = (e.state && e.state.panel) || (location.hash ? location.hash.slice(1) : 'home');
-  document.querySelectorAll('.screen').forEach((s) => { s.style.display = 'none'; });
-  const target = document.getElementById('panel-' + key);
-  if (target) target.style.display = '';
-  sdSyncBottomNav(key);
+  showPanel(key || 'home');
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     if (typeof ksu !== 'undefined' && typeof ksu.fullScreen === 'function') ksu.fullScreen(true);
   } catch (e) {}
-  const saved = await se(`cat "${CORTEX}/settings/theme.txt" 2>/dev/null`, '');
+  try { history.replaceState({ panel: 'home' }, '', '#home'); } catch (e) {}
+  const [saved, blurSaved] = await batched([
+    `cat "${CORTEX}/settings/theme.txt" 2>/dev/null`,
+    `cat "${CORTEX}/settings/blur.txt" 2>/dev/null`,
+  ]);
   const theme = saved || document.documentElement.getAttribute('data-theme') || 'lavender';
   setTheme(theme);
+  const blurOn = blurSaved !== 'off';
+  setBlurEnabled(blurOn);
   const key = location.hash ? location.hash.slice(1) : 'home';
-  if (key && key !== 'home') shellNav(key);
-  else refreshHome();
+  if (key && key !== 'home') shellNav(key, { replace: PRIMARY_TABS.has(key) });
+  else showPanel('home');
   setInterval(() => {
     const home = document.getElementById('panel-home');
     if (home && home.style.display !== 'none') refreshHome();

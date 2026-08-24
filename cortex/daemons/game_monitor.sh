@@ -269,15 +269,17 @@ done
 
 is_pkg_foreground() {
     local PKG="$1"
+    local focus
+    # Fast path: window focus (much cheaper than dumpsys activity activities).
+    focus=$(dumpsys window 2>/dev/null | grep -m1 -E 'mCurrentFocus|mFocusedApp' \
+        | grep -oE '[A-Za-z][A-Za-z0-9_.]*/[A-Za-z0-9_.]*' | head -1 | cut -d/ -f1)
+    [ -n "$focus" ] && [ "$focus" = "$PKG" ] && return 0
+
     if [ -n "$TOP_APP_CPUSET" ]; then
         for PID in $(pidof "$PKG" 2>/dev/null); do
             grep -qx "$PID" "$TOP_APP_CPUSET" 2>/dev/null && return 0
         done
-        return 1
     fi
-    # No cpuset path on this device/kernel - fall back to the dumpsys-based
-    # check. Kept as a real fallback, not removed, since some devices may
-    # genuinely lack the cpuset path this primary method depends on.
     [ "$(sh "$CORTEX/games/foreground_pkg.sh" 2>/dev/null)" = "$PKG" ]
 }
 
@@ -383,62 +385,33 @@ while true; do
     KILL_BG=$(cat "$CORTEX/games/kill_bg_enabled.txt"    2>/dev/null || echo "off")
 
     RUNNING_GAME=""
-    # THE BUG THIS FIXES: pidof only confirms a PROCESS exists somewhere -
-    # it says nothing about whether that process is the foreground app, a
-    # backgrounded/cached process, or just a lingering service (push
-    # notification listener, analytics, music playback, anything) that
-    # outlives the user actually closing the game. A game fully closed and
-    # not even in Recents can still have a live PID from exactly this kind
-    # of background component, which made the daemon treat it as "running"
-    # indefinitely - kill_bg re-enforcement, thermal blackout, resolution
-    # downscale, everything fired for a game that was never actually open.
-    #
-    # PERFORMANCE FIX (this replaced an EARLIER "fix" that made things
-    # worse): a prior version of this exact check called
-    # `dumpsys activity activities` every single 2s loop tick to find the
-    # real foreground package. That dump is the ENTIRE activity/task/window
-    # stack - described even in general Android tooling docs as
-    # "enormously big" - and on a memory-constrained device already showing
-    # Binder thread pool saturation elsewhere in this same log (see the
-    # "cmd: Failure calling service settings: Failed transaction" lines),
-    # a single stalled dumpsys call could stretch one loop iteration from a
-    # nominal 2s to 10s, 20s, or worse - compounding into the ~1 minute
-    # detection delay that was reported. It was checking the RIGHT thing
-    # (real foreground state, not just pidof-alive) via the WRONG,
-    # expensive mechanism, while a far cheaper, already-built, already-
-    # proven-correct mechanism (is_pkg_foreground(), defined above - reads
-    # /dev/cpuset/top-app/tasks, the exact kernel cgroup
-    # ActivityManager itself puts foreground processes into) sat unused
-    # for this exact purpose, only ever called as a secondary confirmation
-    # after the expensive check had already run.
-    #
-    # FIX: lead with is_pkg_foreground() against each SELECTED candidate -
-    # zero dumpsys calls in the common case, just a cgroup file read + grep
-    # per candidate game (typically 1-3 games selected, so this is cheap
-    # even multiplied out). Only fall back to a dumpsys-based check if this
-    # device/kernel genuinely lacks the cpuset path (TOP_APP_CPUSET empty,
-    # checked once above the loop, not re-probed every tick).
-    if [ -n "$TOP_APP_CPUSET" ]; then
-        for PKG in $SELECTED; do
+    # Prefer a single cheap window-focus read, then match against selected list.
+    # Falls back to per-pkg is_pkg_foreground (cpuset / full cascade).
+    FOREGROUND_PKG=$(dumpsys window 2>/dev/null | grep -m1 -E 'mCurrentFocus|mFocusedApp' \
+        | grep -oE '[A-Za-z][A-Za-z0-9_.]*/[A-Za-z0-9_.]*' | head -1 | cut -d/ -f1)
+    if [ -n "$FOREGROUND_PKG" ]; then
+        echo "$SELECTED" | while IFS= read -r PKG || [ -n "$PKG" ]; do
+            PKG=$(printf '%s' "$PKG" | tr -d '\r')
+            [ -z "$PKG" ] && continue
+            [ "$PKG" = "$FOREGROUND_PKG" ] && echo "$PKG" && break
+        done > "$RUNDIR/fg_match.txt"
+        RUNNING_GAME=$(cat "$RUNDIR/fg_match.txt" 2>/dev/null | head -1)
+    fi
+    if [ -z "$RUNNING_GAME" ]; then
+        echo "$SELECTED" | while IFS= read -r PKG || [ -n "$PKG" ]; do
+            PKG=$(printf '%s' "$PKG" | tr -d '\r')
             [ -z "$PKG" ] && continue
             if is_pkg_foreground "$PKG"; then
-                RUNNING_GAME="$PKG"
+                echo "$PKG"
                 break
             fi
-        done
-    else
-        # No cpuset path on this device/kernel at all - fall back to the
-        # cheapest available dumpsys method (window focus, not full
-        # activity dump) so it's still real foreground detection, just
-        # without the free cgroup shortcut.
-        # IMPROVED: same consolidation as the recovery-path block above -
-        # calls the shared 5-candidate cascade in foreground_pkg.sh instead
-        # of a second inline copy of the same 2-candidate regex logic.
-        FOREGROUND_PKG=$(sh "$CORTEX/games/foreground_pkg.sh" 2>/dev/null)
-        for PKG in $SELECTED; do
-            [ "$PKG" = "$FOREGROUND_PKG" ] && RUNNING_GAME="$PKG" && break
-        done
+        done > "$RUNDIR/fg_match.txt"
+        RUNNING_GAME=$(cat "$RUNDIR/fg_match.txt" 2>/dev/null | head -1)
     fi
+
+    # NOTE: the old `for PKG in $SELECTED` path is replaced above so packages
+    # with unusual characters still parse, and so we only pay for one focus
+    # dump in the common case.
 
     # Per-game profiles: if this game has a saved profile (see webroot's
     # "Save Profile" action), it overrides the global PROFILE/TARGET_FPS/
@@ -476,29 +449,9 @@ while true; do
 
         # -- First detection: one-shot tasks ----------------------------------─
         if [ "$RUNNING_GAME" != "$LAST_GAME" ]; then
-            # Bug fix (game detection instantly flagging a freshly-selected
-            # game as "running"): pidof-alive alone isn't enough here. Android
-            # keeps recently-used apps resident in the background cache for a
-            # long time after you leave them - ticking a game on in the
-            # selected list, when it happens to still be backgrounded from
-            # earlier normal phone use, made the daemon treat it as "just
-            # launched" and instantly fire every one-shot action (kill other
-            # apps, block their network, spoof props, perf boost) for a game
-            # the user hadn't actually opened this session. Confirm the game
-            # is genuinely the foreground app before running any of that.
-            # LAST_GAME is deliberately left unset until this passes, so the
-            # check just naturally retries every loop tick (~2s) until the
-            # user actually opens it - no separate persistent state needed.
-            # The continuous OOM-protection block below still runs on
-            # pidof-alive alone, on purpose - that part exists specifically
-            # FOR backgrounded games.
-            if ! is_pkg_foreground "$RUNNING_GAME"; then
-                NOW=$(date +%s)
-                if [ $((NOW - FG_WAIT_LOG_AT)) -ge 30 ]; then
-                    log_p "Selected game $RUNNING_GAME is alive but not foregrounded yet - holding one-shot launch sequence, PID still OOM-protected below"
-                    FG_WAIT_LOG_AT="$NOW"
-                fi
-            else
+            # RUNNING_GAME is already focus/cpuset confirmed above — do not
+            # re-check here (that double dump was a common source of multi-
+            # second "boost is active" delay after the game was already open).
             log_p "Game ON: $RUNNING_GAME"
             _LAUNCH_T0=$(_now_ms)
 
@@ -515,34 +468,26 @@ while true; do
             thermal_is_armed && THERMAL_ARMED=1
 
             # -- PHASE 1: Notification - immediate user feedback --------------─
-            # Post first so the user sees confirmation the moment detection
-            # fires, before any disruptive work (resolution force-stop, kill_bg,
-            # sysfs sweeps) has started. Backgrounded - a slow su+Binder call
-            # must never block the rest of this sequence.
             sh "$CORTEX/notify/post.sh" game_launch "Sweet Dreams" \
                 "Boost active for ${GAME_LABEL} - ${TARGET_FPS}fps - ${PROFILE_NOW} profile" 2>/dev/null &
             echo "[TIMING] notification fired: $(( $(_now_ms) - _LAUNCH_T0 ))ms" >> "$LOGFILE"
 
-            # -- PHASE 2: Resolution - before per-process tweaks --------------
-            # apply_resolution.sh may force-stop the game process so Android's
-            # Game Mode API can apply the new resolution at cold start. Any
-            # per-process work applied before this (OOM score, cpuset,
-            # timerslack, perf hints) would be wiped by that force-stop anyway
-            # - so those all belong in Phase 3, after the game relaunches.
-            # Synchronous: the grace-period flag it sets must exist before
-            # the daemon's next loop iteration checks for a game exit.
+            # -- PHASE 2: Resolution ------------------------------------------
+            # If WebUI already armed the same factor, reinforce in session mode
+            # (overlay + optional wm size) WITHOUT force-stopping the game.
             RES_TARGET=$(resolve_scale "$RUNNING_GAME")
-            [ "$RES_TARGET" != "native" ] && sh "$CORTEX/display/apply_resolution.sh" "$RES_TARGET" "$RUNNING_GAME" 2>/dev/null
+            if [ "$RES_TARGET" != "native" ]; then
+                PREV_F=$(cat "$CORTEX/display/resolution_applied_factor.txt" 2>/dev/null | tr -d '\r\n ')
+                PREV_P=$(cat "$CORTEX/display/resolution_applied_pkg.txt" 2>/dev/null | tr -d '\r\n ')
+                if [ "$PREV_F" = "$RES_TARGET" ] && [ "$PREV_P" = "$RUNNING_GAME" ]; then
+                    sh "$CORTEX/display/apply_resolution.sh" "$RES_TARGET" "$RUNNING_GAME" session 2>/dev/null
+                else
+                    sh "$CORTEX/display/apply_resolution.sh" "$RES_TARGET" "$RUNNING_GAME" 2>/dev/null
+                fi
+            fi
             echo "[TIMING] apply_resolution.sh done (sync): $(( $(_now_ms) - _LAUNCH_T0 ))ms" >> "$LOGFILE"
 
-            # -- PHASE 3: All other tweaks - parallel, after relaunch --------─
-            # The game process is now stable (either untouched or freshly
-            # relaunched by Phase 2). All of these target either the live
-            # process or system-wide nodes, and none depends on another's
-            # output - run in parallel so total delay is the max of any one
-            # script, not the sum of all of them.
-            # Collected with `wait` before LAST_GAME is set to ensure state
-            # files are fully written before the continuous loop reads them.
+            # -- PHASE 3: All other tweaks - parallel -------------------------
             {
                 [ "$KILL_BG" = "on" ] && sh "$CORTEX/games/kill_bg.sh" "$RUNNING_GAME" 2>/dev/null
                 echo "[TIMING] kill_bg done: $(( $(_now_ms) - _LAUNCH_T0 ))ms" >> "$LOGFILE"
@@ -589,24 +534,17 @@ while true; do
             } &
             _PID_TOUCH=$!
 
-            # perf/apply.sh - synchronous: enforce_cpu_floor() reads the
-            # perfmgr nodes it writes in the very next loop iteration.
             [ "$PERF_EN" = "on" ] && sh "$CORTEX/perf/apply.sh" "$RUNNING_GAME" boost 2>/dev/null
             echo "[TIMING] perf/apply.sh done (sync): $(( $(_now_ms) - _LAUNCH_T0 ))ms" >> "$LOGFILE"
 
             wait $_PID_KILL $_PID_NET $_PID_THERMAL $_PID_SENSOR $_PID_AUDIO $_PID_SPOOF $_PID_TOUCH
             echo "[TIMING] all phases complete: $(( $(_now_ms) - _LAUNCH_T0 ))ms total" >> "$LOGFILE"
 
-            # Backgrounded: preload.sh has its own internal 5s delay (lets
-            # the game's own startup I/O go first) plus however long the
-            # actual page-cache warm takes - neither should block this loop.
             sh "$CORTEX/games/preload.sh" "$RUNNING_GAME" 2>/dev/null &
-
-            sh "$CORTEX/games/cpuinfo_mount.sh" "$RUNNING_GAME" on 2>/dev/null &
+            sh "$CORTEX/games/cpuinfo_mount.sh" "$RUNNING_GAME" on 2>/dev/null
             LAST_GAME="$RUNNING_GAME"
             echo "$LAST_GAME" > "$LAST_GAME_FILE"
             LOOP_ITER=0
-            fi
         fi
 
         # -- CONTINUOUS - runs every 2s while game is alive --------------------
@@ -705,13 +643,14 @@ while true; do
             fi
         fi
 
-        # Every 10 loops (~20s): re-run kill_bg if it's on. "Only the game
-        # should run" means ongoing enforcement, not a one-time sweep at
-        # launch - anything that respawns via an auto-start receiver, a
-        # notification tapped from the status bar, or just the user
-        # switching away and back needs to be caught too. cortex/ai/engine.sh
-        # runs continuously on its own 5s cycle and doesn't need a kick from
-        # here (the old Frieren_AI_Games binary needed this; ours doesn't).
+        # Re-assert COPG-style cpuinfo bind + render scale while the game is up.
+        if [ $((LOOP_ITER % 5)) -eq 0 ]; then
+            sh "$CORTEX/games/cpuinfo_mount.sh" "$RUNNING_GAME" on 2>/dev/null
+            RES_LIVE=$(resolve_scale "$RUNNING_GAME")
+            [ "$RES_LIVE" != "native" ] && sh "$CORTEX/display/apply_resolution.sh" "$RES_LIVE" "$RUNNING_GAME" session 2>/dev/null
+        fi
+
+        # Every ~10s: re-run kill_bg if it's on.
         if [ "$LOOP_ITER" -ge 10 ]; then
             [ "$KILL_BG" = "on" ] && sh "$CORTEX/games/kill_bg.sh" "$RUNNING_GAME" 2>/dev/null
 
@@ -738,7 +677,7 @@ while true; do
 
         fi
 
-        sleep 2
+        sleep 1
 
     else
         # -- Game backgrounded or exited --------------------------------------─

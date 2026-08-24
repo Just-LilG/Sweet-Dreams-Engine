@@ -92,7 +92,7 @@ azenith_game_set() {
             ''|off|native) cmd game set --mode 2 "$_pkg" >/dev/null 2>&1 ;;
             *) cmd game set --mode 2 --fps "$_fps" "$_pkg" >/dev/null 2>&1 ;;
         esac
-        return
+        return $?
     fi
     case "$_fps" in
         ''|off|native)

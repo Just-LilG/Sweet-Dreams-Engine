@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.43
+
+- Faster game detection (1s loop + window focus) so the boost notification appears sooner.
+- Render scale: session `wm size` fallback when Game Mode is weak; reinforce while the game is open; no force-stop if the scale was already armed.
+- CPU spoof: COPG-style system bind of `CPU/cpuinfo_*` onto `/proc/cpuinfo` while the game is foreground; controller restarts after assignment changes.
+- WebUI: option to disable liquid-glass blur; shared bottom nav so Games/Logs feel like tabs; phone back no longer re-opens the last settings page.
+
 ## v2.5.42
 
 - Engine Live Readout: labels no longer jam into `off°C`; idle telemetry plus sysfs fallback; 4s poll.
@@ -17,6 +24,7 @@
 
 ## GitHub
 
+- **v2.5.43** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.43/SweetDreams-v2_5_43.zip)
 - **v2.5.42** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.42/SweetDreams-v2_5_42.zip)
 - **v2.5.41** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.41/SweetDreams-v2_5_41.zip)
 - **v2.5.40** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.40/SweetDreams-v2_5_40.zip)
