@@ -1,7 +1,7 @@
 id=sweet_dreams
 name=Sweet Dreams // Engine
-version=v2.5.41
-versionCode=291
+version=v2.5.42
+versionCode=292
 author=Lil G Tech Labs
 description=MediaTek FPS Unlocker & Thermal Bypass Engine. Put the competition to sleep.
 updateJson=https://raw.githubusercontent.com/Just-LilG/Sweet-Dreams-Engine/main/update.json
