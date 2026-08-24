@@ -262,6 +262,16 @@ if [ -s "$TMP" ] && grep -q '"cpu_spoof"' "$TMP" && grep -q '^{' "$TMP"; then
     else
         echo "[spoof] COPG.json built OK - ${ENTRY_COUNT} device profile(s) - WARNING: sync to $COPG_DIR failed, controller will not see this config"
     fi
+    if [ ! -f "$COPG_DIR/module.prop" ]; then
+        cat > "$COPG_DIR/module.prop" <<'EOF'
+id=COPG
+name=COPG (Sweet Dreams stub)
+version=v5.7.1-sd
+versionCode=571
+author=Sweet Dreams
+description=Config + CPU profiles for Sweet Dreams Zygisk spoof. Do not disable.
+EOF
+    fi
 else
     rm -f "$TMP"
     echo "[spoof] ERROR: JSON build failed, keeping previous COPG.json"

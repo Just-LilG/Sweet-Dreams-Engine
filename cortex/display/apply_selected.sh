@@ -1,9 +1,11 @@
 #!/system/bin/sh
-# Arm (or apply+relaunch foreground) Game Mode downscale for every selected game.
-RES="$1"
+# Arm render scale for every selected app.
+# Per-package resolve_scale() reads WebUI global resolution.txt + optional profile.
 MODDIR="/data/adb/modules/sweet_dreams"
 CORTEX="$MODDIR/cortex"
 LIST="$CORTEX/games/selected.txt"
+
+. "$CORTEX/display/game_mode.sh"
 
 n=0
 FG=$(sh "$CORTEX/games/foreground_pkg.sh" 2>/dev/null | tr -d '\r\n ')
@@ -17,10 +19,11 @@ while IFS= read -r pkg || [ -n "$pkg" ]; do
     pkg=$(echo "$pkg" | tr -d '\r\n ')
     [ -z "$pkg" ] && continue
     n=$((n + 1))
+    SCALE=$(resolve_scale "$pkg")
     if [ -n "$FG" ] && [ "$pkg" = "$FG" ]; then
-        sh "$CORTEX/display/apply_resolution.sh" "$RES" "$pkg"
+        sh "$CORTEX/display/apply_resolution.sh" "$SCALE" "$pkg" session
     else
-        SKIP_RESTART=1 sh "$CORTEX/display/apply_resolution.sh" "$RES" "$pkg"
+        SKIP_RESTART=1 sh "$CORTEX/display/apply_resolution.sh" "$SCALE" "$pkg" arm
     fi
 done < "$LIST"
 

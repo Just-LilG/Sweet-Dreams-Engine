@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.6.2
+
+- Tab transitions when switching Home / Games / Logs / Info
+- Restored Info (About) tab with live module + device details
+- Games: tap a game for per-game profile (boost profile, scale, thermal °C, device/CPU spoof, touch)
+- Removed inline Spoof °C from the Games list
+- CPU spoof: mount fake cpuinfo inside each app mount namespace (global bind alone is invisible on modern Android)
+- Render scale: session `wm size` fallback for every selected foreground app, not only Game Mode–friendly titles
+
 ## v2.6.1
 
 - WebUI “Liquid glass” is an appearance preference only (not a game/engine feature): On = frosted glass; Off = solid opaque panel colors throughout the WebUI.

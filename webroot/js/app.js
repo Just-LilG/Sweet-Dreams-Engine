@@ -43,6 +43,7 @@ const CPU_PROFILES = [
 
 let _toastTimer;
 let _spoofPkg = '';
+let _gameProfilePkg = '';
 let _gamesAll = [];
 let _gamesSelected = new Set();
 let _dnsTimer;
@@ -177,16 +178,18 @@ window.setTheme = setTheme;
 window.sdPickChip = sdPickChip;
 window.sdPickMode = sdPickMode;
 
-const PRIMARY_TABS = new Set(['home', 'games', 'logs']);
+const PRIMARY_TABS = new Set(['home', 'games', 'logs', 'info']);
 
 function showPanel(key) {
-  document.querySelectorAll('.screen').forEach((s) => { s.style.display = 'none'; });
   const target = document.getElementById('panel-' + key);
+  document.querySelectorAll('.screen').forEach((s) => {
+    s.style.display = '';
+    s.classList.toggle('is-active', s === target);
+  });
   if (target) {
-    target.style.display = '';
     const scroller = document.getElementById('app-scroll');
     if (scroller) scroller.scrollTop = 0;
-    else window.scrollTo(0, 0);
+    target.scrollTop = 0;
   }
   const nav = document.getElementById('sd-bottom-nav');
   if (nav) nav.style.display = PRIMARY_TABS.has(key) ? '' : 'none';
@@ -231,7 +234,7 @@ function toggleBlur(el) {
 window.toggleBlur = toggleBlur;
 
 function sdSyncBottomNav(key) {
-  const tabMap = { home: 0, games: 1, logs: 2 };
+  const tabMap = { home: 0, games: 1, logs: 2, info: 3 };
   if (!(key in tabMap)) return;
   document.querySelectorAll('#sd-bottom-nav .nav-item').forEach((el, i) => {
     el.classList.toggle('active', i === tabMap[key]);
@@ -247,6 +250,8 @@ function loadPanel(key) {
     home: refreshHome,
     games: mod_games_load,
     logs: mod_logs_refresh,
+    info: mod_info_load,
+    gameprofile: mod_gameprofile_load,
     cpu: loadCpu,
     gpu: loadGpu,
     ram: loadRam,
@@ -277,7 +282,7 @@ function loadPanel(key) {
   if (key === 'engine') {
     window._enginePoll = setInterval(() => {
       const panel = document.getElementById('panel-engine');
-      if (panel && panel.style.display !== 'none') loadEngine();
+      if (panel && panel.classList.contains('is-active')) loadEngine();
     }, 4000);
   }
 }
@@ -1058,9 +1063,9 @@ function mod_renderscale_pickRes(el) {
   txt('home-sub-res', res === 'native' ? 'Native — Full' : Math.round(parseFloat(res) * 100) + '%');
   se(`sh "${CORTEX}/display/apply_selected.sh" '${res}'`).then((out) => {
     if (String(out || '').includes('NO_GAMES')) {
-      toast('Add games on the Games tab — scale applies to those packages');
+      toast('Add apps on the Games tab — scale applies to every selected package');
     } else {
-      toast('Render scale: ' + (res === 'native' ? 'Native' : Math.round(parseFloat(res) * 100) + '%') + ' — reopen the game if it is already open');
+      toast('Render scale armed for selected apps — reopen if already open');
     }
   });
 }
@@ -1548,12 +1553,13 @@ async function loadSpoof() {
   const chips = document.getElementById('devicespoof-game-chips');
   const pkgs = (selected || '').split(/\n/).map((s) => s.trim()).filter(Boolean);
   if (chips) {
+    const preferred = _spoofPkg && pkgs.includes(_spoofPkg) ? _spoofPkg : pkgs[0];
     chips.innerHTML = pkgs.length
-      ? pkgs.map((pkg, i) => `<div class="chip${i === 0 ? ' active' : ''}" data-pkg="${pkg}" onclick="mod_devicespoof_pickGame(this)">${pkg.split('.').pop()}</div>`).join('')
+      ? pkgs.map((pkg) => `<div class="chip${pkg === preferred ? ' active' : ''}" data-pkg="${pkg}" onclick="mod_devicespoof_pickGame(this)">${pkg.split('.').pop()}</div>`).join('')
       : '<div class="chip">No games selected</div>';
-    if (pkgs[0]) {
-      _spoofPkg = pkgs[0];
-      txt('devicespoof-selected-game-name', pkgs[0].split('.').pop());
+    if (preferred) {
+      _spoofPkg = preferred;
+      txt('devicespoof-selected-game-name', preferred.split('.').pop());
     }
   }
   const sel = document.getElementById('devicespoof-device-select');
@@ -1591,8 +1597,8 @@ async function saveSpoofAssignment() {
   }
   await writeLines(`${CORTEX}/games/spoof_assignments.txt`, lines);
   renderSpoofDetails(deviceId);
-  se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"; pkill -f "${MOD}/controller" 2>/dev/null; sleep 1; nohup "${MOD}/controller" >/dev/null 2>&1 &`);
-  toast(deviceId === 'off' ? 'Spoof removed' : `${_spoofPkg.split('.').pop()} → ${deviceId}`);
+  se(`sh "${CORTEX}/games/build_spoof_json.sh"; sh "${CORTEX}/games/spoof.sh"; pkill -f "${MOD}/controller" 2>/dev/null; sleep 1; nohup "${MOD}/controller" >/dev/null 2>&1 &; sh "${CORTEX}/games/cpuinfo_mount.sh" "${_spoofPkg}" on 2>/dev/null`);
+  toast(deviceId === 'off' && !cpuOn ? 'Spoof removed' : `${_spoofPkg.split('.').pop()} → ${deviceId === 'off' ? 'CPU only' : deviceId}`);
 }
 
 /* ── Games ── */
@@ -1663,22 +1669,28 @@ function mod_games_renderSelected() {
     return;
   }
   listEl.innerHTML = Array.from(_gamesSelected).map((pkg) => {
-    const spoofPath = `${CORTEX}/games/${pkg}.spoof_c`;
-    return `<div class="game-row">
+    return `<div class="game-row" onclick="mod_games_openProfile('${pkg}')">
       ${gameAvatarHtml(pkg)}
       <div class="game-meta" style="flex:1;min-width:0;">
         <div class="game-name">${gameLabel(pkg)}</div>
         <div class="game-pkg" style="font-size:10px;color:rgba(255,255,255,.45);overflow:hidden;text-overflow:ellipsis;">${pkg}</div>
-        <label style="font-size:10px;color:rgba(255,255,255,.5);">Spoof °C <input type="number" min="0" max="45" placeholder="default" style="width:64px;margin-left:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:8px;padding:2px 6px;" onchange="mod_games_setSpoofC('${pkg}', this.value)"></label>
+        <div class="game-hint">Tap for per-game profile</div>
       </div>
       <div class="game-actions">
         <button type="button" onclick="event.stopPropagation();mod_games_launch('${pkg}')">Launch</button>
         <button type="button" onclick="event.stopPropagation();mod_games_stop('${pkg}')">Stop</button>
       </div>
-      <div class="switch on" onclick="mod_games_toggle('${pkg}', this)"></div>
+      <div class="switch on" onclick="event.stopPropagation();mod_games_toggle('${pkg}', this)"></div>
+      <svg class="game-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
     </div>`;
   }).join('');
 }
+
+function mod_games_openProfile(pkg) {
+  _gameProfilePkg = pkg;
+  shellNav('gameprofile');
+}
+window.mod_games_openProfile = mod_games_openProfile;
 
 function mod_games_setSpoofC(pkg, val) {
   const n = parseInt(val, 10);
@@ -1740,6 +1752,143 @@ function mod_games_stopAll() {
   toast('Stopped selected games');
 }
 window.mod_games_stopAll = mod_games_stopAll;
+
+/* ── Per-game profile ── */
+function gameProfilePath(pkg) {
+  return `${CORTEX}/games/profiles/${String(pkg).replace(/\./g, '-')}.txt`;
+}
+
+function parseProfile(raw) {
+  const out = { profile: 'gaming', fps: '90', rr_lock: 'on', fps_lock: 'off', resolution: 'default' };
+  String(raw || '').split(/\n/).forEach((line) => {
+    const i = line.indexOf('=');
+    if (i < 0) return;
+    out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  });
+  return out;
+}
+
+async function mod_gameprofile_load() {
+  const pkg = _gameProfilePkg;
+  if (!pkg) {
+    shellNav('games', { replace: true });
+    return;
+  }
+  txt('gameprofile-title', gameLabel(pkg));
+  txt('gameprofile-pkg', pkg);
+  fillGameIcons([pkg]);
+  const [profRaw, spoofC, assigns, master, globalRes] = await batched([
+    `cat "${gameProfilePath(pkg)}" 2>/dev/null`,
+    `cat "${CORTEX}/games/${pkg}.spoof_c" 2>/dev/null`,
+    `cat "${CORTEX}/games/spoof_assignments.txt" 2>/dev/null`,
+    `cat "${CORTEX}/games/spoof_master.txt" 2>/dev/null`,
+    `cat "${CORTEX}/display/resolution.txt" 2>/dev/null`,
+  ]);
+  const p = parseProfile(profRaw);
+  document.querySelectorAll('#gameprofile-profile-chips .chip').forEach((c) => {
+    c.classList.toggle('active', c.dataset.profile === p.profile);
+  });
+  const res = p.resolution === 'default' || p.resolution === 'inherit' ? (globalRes || 'native') : p.resolution;
+  document.querySelectorAll('#gameprofile-res-chips .chip').forEach((c) => {
+    c.classList.toggle('active', c.dataset.res === res || (c.dataset.res === 'default' && (p.resolution === 'default' || !p.resolution)));
+  });
+  // Prefer marking default chip when profile says default/inherit
+  if (p.resolution === 'default' || p.resolution === 'inherit' || !p.resolution) {
+    document.querySelectorAll('#gameprofile-res-chips .chip').forEach((c) => {
+      c.classList.toggle('active', c.dataset.res === 'default');
+    });
+  }
+  const spoofInput = document.getElementById('gameprofile-spoof-c');
+  if (spoofInput) spoofInput.value = spoofC || '';
+  const row = String(assigns || '').split(/\n/).map(parseSpoofLine).find((r) => r && r.pkg === pkg);
+  txt('gameprofile-spoof-summary', row
+    ? `${row.device === 'off' ? 'CPU-only' : row.device}${row.cpu ? ` · CPU ${row.cpuKey}` : ''}`
+    : (master === 'on' ? 'No spoof assigned' : 'Master spoof is off'));
+}
+window.mod_gameprofile_load = mod_gameprofile_load;
+
+async function mod_gameprofile_saveField(key, value) {
+  const pkg = _gameProfilePkg;
+  if (!pkg) return;
+  const path = gameProfilePath(pkg);
+  const raw = await se(`cat "${path}" 2>/dev/null`, '');
+  const p = parseProfile(raw);
+  p[key] = value;
+  delete p.seeded;
+  const lines = ['profile', 'fps', 'rr_lock', 'fps_lock', 'resolution']
+    .map((k) => `${k}=${p[k] ?? ''}`);
+  await writeLines(path, lines);
+}
+
+function mod_gameprofile_pickProfile(el) {
+  sdPickChip(el);
+  mod_gameprofile_saveField('profile', el.dataset.profile);
+  toast('Profile: ' + el.dataset.profile);
+}
+window.mod_gameprofile_pickProfile = mod_gameprofile_pickProfile;
+
+function mod_gameprofile_pickRes(el) {
+  sdPickChip(el);
+  const res = el.dataset.res;
+  mod_gameprofile_saveField('resolution', res).then(() => {
+    if (res !== 'default' && res !== 'native') {
+      se(`sh "${CORTEX}/display/apply_resolution.sh" '${res}' '${_gameProfilePkg}' arm`);
+    } else if (res === 'native') {
+      se(`sh "${CORTEX}/display/apply_resolution.sh" native '${_gameProfilePkg}'`);
+    } else {
+      se(`sh "${CORTEX}/display/apply_selected.sh"`);
+    }
+  });
+  toast('Scale saved for this game');
+}
+window.mod_gameprofile_pickRes = mod_gameprofile_pickRes;
+
+function mod_gameprofile_setSpoofC(val) {
+  if (!_gameProfilePkg) return;
+  mod_games_setSpoofC(_gameProfilePkg, val);
+  toast(val === '' ? 'Using global thermal °C' : `Spoof ${val}°C for this game`);
+}
+window.mod_gameprofile_setSpoofC = mod_gameprofile_setSpoofC;
+
+function mod_gameprofile_openSpoof() {
+  if (!_gameProfilePkg) return;
+  _spoofPkg = _gameProfilePkg;
+  shellNav('devicespoof');
+}
+window.mod_gameprofile_openSpoof = mod_gameprofile_openSpoof;
+
+function mod_gameprofile_openTouch() {
+  shellNav('touch');
+}
+window.mod_gameprofile_openTouch = mod_gameprofile_openTouch;
+
+/* ── Info / About ── */
+async function mod_info_load() {
+  const [ver, brand, model, device, board, hardware, soc, release, sdk, kern, author] = await batched([
+    `grep '^version=' "${MOD}/module.prop" 2>/dev/null | cut -d= -f2-`,
+    `getprop ro.product.brand`,
+    `getprop ro.product.model`,
+    `getprop ro.product.device`,
+    `getprop ro.product.board`,
+    `getprop ro.hardware`,
+    `getprop ro.board.platform`,
+    `getprop ro.build.version.release`,
+    `getprop ro.build.version.sdk`,
+    `uname -r`,
+    `grep '^author=' "${MOD}/module.prop" 2>/dev/null | cut -d= -f2-`,
+  ]);
+  txt('info-version', ver || '—');
+  txt('info-module-id', 'sweet_dreams');
+  txt('info-device', model || device || '—');
+  txt('info-device-sub', [brand, device].filter(Boolean).join(' · ') || '—');
+  txt('info-soc', soc || hardware || board || '—');
+  txt('info-soc-sub', [hardware, board].filter(Boolean).join(' · ') || '—');
+  txt('info-android', release ? `Android ${release}` : '—');
+  txt('info-android-sub', sdk ? `API ${sdk}` : '—');
+  txt('info-kernel', kern || '—');
+  txt('info-author', author || 'Lil G Tech Labs');
+}
+window.mod_info_load = mod_info_load;
 
 /* ── Logs ── */
 async function mod_logs_refresh() {
@@ -2107,6 +2256,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   else showPanel('home');
   setInterval(() => {
     const home = document.getElementById('panel-home');
-    if (home && home.style.display !== 'none') refreshHome();
+    if (home && home.classList.contains('is-active')) refreshHome();
   }, 8000);
 });

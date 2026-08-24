@@ -1,8 +1,10 @@
 #!/system/bin/sh
-# Bind a fake /proc/cpuinfo the way COPG's controller does for a foreground game:
-# system-level MS_BIND onto /proc/cpuinfo (not a private game mount ns via nsenter).
-# Zygisk companion is still preferred when it loads; this is the always-on fallback
-# that re-asserts every game_monitor tick while the game is up.
+# Bind a fake /proc/cpuinfo for a foreground game (COPG-style fallback).
+#
+# Android apps run in private mount namespaces, so a global bind of
+# /proc/cpuinfo is often invisible to the game. Prefer nsenter into every
+# PID that belongs to the package; keep a global bind as a best-effort
+# extra for older ROMs that still share the init mount ns.
 #
 # Usage: cpuinfo_mount.sh <package> [on|off]
 
@@ -22,9 +24,8 @@ MASTER=$(cat "$CORTEX/games/spoof_master.txt" 2>/dev/null | tr -d '\r\n ')
 if [ "$MASTER" != "on" ]; then
     if grep -q ' /proc/cpuinfo ' /proc/mounts 2>/dev/null; then
         umount -l /proc/cpuinfo >/dev/null 2>&1
-        rm -f "$STATE"
-        log_cpu "Master off — unmounted /proc/cpuinfo"
     fi
+    rm -f "$STATE"
     exit 0
 fi
 
@@ -39,12 +40,27 @@ cpu_key_for() {
     esac
 }
 
+# Collect every PID whose main cmdline is the package or a :service of it.
+pkg_pids() {
+    local pid cmd
+    for pid in /proc/[0-9]*; do
+        [ -r "$pid/cmdline" ] || continue
+        cmd=$(tr '\0' '\n' < "$pid/cmdline" 2>/dev/null | head -1)
+        case "$cmd" in
+            "$PKG"|"$PKG":*) printf '%s\n' "${pid##*/}" ;;
+        esac
+    done
+}
+
 unmount_cpuinfo() {
     if grep -q ' /proc/cpuinfo ' /proc/mounts 2>/dev/null; then
         umount -l /proc/cpuinfo >/dev/null 2>&1
-        log_cpu "Unmounted /proc/cpuinfo"
+        log_cpu "Unmounted global /proc/cpuinfo"
     fi
-    # Legacy per-ns leftovers from older builds.
+    for pid in $(pkg_pids); do
+        nsenter -t "$pid" -m -- umount -l /proc/cpuinfo >/dev/null 2>&1
+    done
+    # Legacy pidof sweep for odd process names.
     for pid in $(pidof "$PKG" 2>/dev/null); do
         nsenter -t "$pid" -m -- umount -l /proc/cpuinfo >/dev/null 2>&1
     done
@@ -69,34 +85,35 @@ fi
 chmod 0444 "$FILE" 2>/dev/null
 chcon u:object_r:system_file:s0 "$FILE" 2>/dev/null
 
-# Already mounted to the same file — nothing to do.
-CUR=$(cat "$STATE" 2>/dev/null)
-if [ "$CUR" = "$FILE" ] && grep -q ' /proc/cpuinfo ' /proc/mounts 2>/dev/null; then
-    exit 0
-fi
-
-# Remount cleanly (COPG-style foreground reconcile).
-grep -q ' /proc/cpuinfo ' /proc/mounts 2>/dev/null && umount -l /proc/cpuinfo >/dev/null 2>&1
-
-if mount -o bind "$FILE" /proc/cpuinfo >/dev/null 2>&1; then
-    echo "$FILE" > "$STATE"
-    log_cpu "Bound $FILE -> /proc/cpuinfo for $PKG (key=$KEY)"
-    exit 0
-fi
-
-# Fallback: per-process mount ns (older Sweet Dreams path). Works on some
-# ROMs where global /proc bind is blocked; COPG prefers the global path above.
 ok=0
-for pid in $(pidof "$PKG" 2>/dev/null); do
+
+# 1) Per-app mount namespaces (what the game actually sees).
+for pid in $(pkg_pids); do
     if nsenter -t "$pid" -m -- mount -o bind "$FILE" /proc/cpuinfo >/dev/null 2>&1; then
         ok=1
     fi
 done
+
+# pidof fallback if /proc cmdline scan found nothing yet (cold start race).
+if [ "$ok" != "1" ]; then
+    for pid in $(pidof "$PKG" 2>/dev/null); do
+        if nsenter -t "$pid" -m -- mount -o bind "$FILE" /proc/cpuinfo >/dev/null 2>&1; then
+            ok=1
+        fi
+    done
+fi
+
+# 2) Global bind — helps older shared-ns ROMs; harmless if apps ignore it.
+grep -q ' /proc/cpuinfo ' /proc/mounts 2>/dev/null && umount -l /proc/cpuinfo >/dev/null 2>&1
+if mount -o bind "$FILE" /proc/cpuinfo >/dev/null 2>&1; then
+    ok=1
+fi
+
 if [ "$ok" = "1" ]; then
     echo "$FILE" > "$STATE"
-    log_cpu "nsenter-bound $FILE for $PKG PIDs (global bind failed)"
+    log_cpu "Bound $FILE for $PKG (key=$KEY, nsenter+global)"
     exit 0
 fi
 
-log_cpu "FAILED to bind $FILE for $PKG"
+log_cpu "FAILED to bind $FILE for $PKG (no PIDs yet or mount blocked)"
 exit 1

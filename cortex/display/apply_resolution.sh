@@ -147,9 +147,11 @@ NEED_RESTART=1
 [ "$SKIP_RESTART" = "1" ] && NEED_RESTART=0
 [ "$ALREADY" = "$NORM" ] && [ "$ALREADY_PKG" = "$PKG" ] && NEED_RESTART=0
 
-# Session fallback: always reinforce with wm size while game is live when
-# Game Mode service was reported missing at boot, or when explicitly session.
-if [ "$MODE" = "session" ] || [ "$HAS_GAME" != "1" ]; then
+# Session / live fallback: Game Mode downscale only works reliably on some
+# packages (often true "games"). wm size covers every selected app while it
+# is foreground — including apps Game Mode silently ignores.
+FG_NOW=$(sh "$CORTEX/games/foreground_pkg.sh" 2>/dev/null | tr -d '\r\n ')
+if [ "$MODE" = "session" ] || [ "$HAS_GAME" != "1" ] || [ "$FG_NOW" = "$PKG" ]; then
     apply_wm_size_scale "$NORM" || true
 fi
 

@@ -501,6 +501,20 @@ rm -f "$MODPATH/cortex/device/capability_probe.done" 2>/dev/null
 COPG_DIR="/data/adb/modules/COPG"
 mkdir -p "$COPG_DIR/CPU" "$COPG_DIR/GPU" "$COPG_DIR/license" 2>/dev/null
 
+# Stub module.prop so KernelSU/Magisk keep the COPG directory as a real
+# module slot (config + CPU profiles the Zygisk .so hardcodes). No zygisk/
+# here — the .so stays under sweet_dreams to avoid double injection.
+if [ ! -f "$COPG_DIR/module.prop" ]; then
+    cat > "$COPG_DIR/module.prop" <<'EOF'
+id=COPG
+name=COPG (Sweet Dreams stub)
+version=v5.7.1-sd
+versionCode=571
+author=Sweet Dreams
+description=Config + CPU profiles for Sweet Dreams Zygisk spoof. Do not disable.
+EOF
+fi
+
 # Seed COPG.json with the bundled default (empty spoof - no packages
 # assigned yet) so the .so has a valid, parseable file from boot 1. The
 # real per-package config gets rebuilt on top of this by
@@ -508,6 +522,8 @@ mkdir -p "$COPG_DIR/CPU" "$COPG_DIR/GPU" "$COPG_DIR/license" 2>/dev/null
 # this seed is just so the very first boot never finds a missing file.
 cp -f "$MODPATH/COPG.json" "$COPG_DIR/COPG.json" 2>/dev/null
 cp -f "$MODPATH"/CPU/cpuinfo_* "$COPG_DIR/CPU/" 2>/dev/null
+# Always refresh stub description on update flashes.
+grep -q 'Sweet Dreams stub' "$COPG_DIR/module.prop" 2>/dev/null || true
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm_recursive "$MODPATH/system/bin" 0 2000 0755 0755
