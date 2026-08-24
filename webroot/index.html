@@ -169,6 +169,91 @@ body{font-family:var(--font-body);color:#fff;}
   backdrop-filter:none !important;
   -webkit-backdrop-filter:none !important;
 }
+/* Solid UI mode: replace frosted glass with opaque surfaces (WebUI preference, not a game feature). */
+:root[data-blur="off"]{
+  --bg-glow-1:transparent;
+  --bg-glow-2:transparent;
+  --solid-panel:#35304c;
+  --solid-panel-2:#3d3756;
+  --solid-panel-3:#45405e;
+  --solid-tint:#3a3458;
+  --solid-border:rgba(255,255,255,.12);
+}
+:root[data-blur="off"][data-theme="vanilla"]{
+  --solid-panel:#2c3022;
+  --solid-panel-2:#343828;
+  --solid-panel-3:#3c4030;
+  --solid-tint:#323628;
+}
+:root[data-blur="off"]::before{
+  background:var(--bg-base-1) !important;
+}
+:root[data-blur="off"] .list-flat,
+:root[data-blur="off"] .stat-box,
+:root[data-blur="off"] .toggle-row,
+:root[data-blur="off"] .profile-card,
+:root[data-blur="off"] .res-card,
+:root[data-blur="off"] .lock-card,
+:root[data-blur="off"] .game-row,
+:root[data-blur="off"] .daemon-row,
+:root[data-blur="off"] .glass,
+:root[data-blur="off"] .chip,
+:root[data-blur="off"] .nav,
+:root[data-blur="off"] .tabbar,
+:root[data-blur="off"] .live-badge,
+:root[data-blur="off"] .header-icon-btn,
+:root[data-blur="off"] .back,
+:root[data-blur="off"] .readout-tile,
+:root[data-blur="off"] .select-display,
+:root[data-blur="off"] .select-options,
+:root[data-blur="off"] .theme-card,
+:root[data-blur="off"] .val-row,
+:root[data-blur="off"] .quick-btn,
+:root[data-blur="off"] .banner,
+:root[data-blur="off"] .risk-band,
+:root[data-blur="off"] .warn-card,
+:root[data-blur="off"] .term,
+:root[data-blur="off"] .search-row input,
+:root[data-blur="off"] .status-pill,
+:root[data-blur="off"] .quick-card,
+:root[data-blur="off"] #sd-bottom-nav .nav,
+:root[data-blur="off"] [class*="toggle-row"],
+:root[data-blur="off"] [class*="stat-box"],
+:root[data-blur="off"] [class*="list-flat"],
+:root[data-blur="off"] [class*="live-badge"],
+:root[data-blur="off"] [class*="res-card"],
+:root[data-blur="off"] [class*="lock-card"],
+:root[data-blur="off"] [class*="game-row"],
+:root[data-blur="off"] [class*="daemon-row"]{
+  background:var(--solid-panel) !important;
+  border-color:var(--solid-border) !important;
+  box-shadow:none !important;
+}
+:root[data-blur="off"] .chip.active,
+:root[data-blur="off"] .profile-card.active,
+:root[data-blur="off"] .res-card.active,
+:root[data-blur="off"] .lock-card.active,
+:root[data-blur="off"] .nav-item.active{
+  background:var(--lavender) !important;
+  color:var(--ink) !important;
+  border-color:transparent !important;
+}
+:root[data-blur="off"] .glass,
+:root[data-blur="off"] [class*="glass"]{
+  background:var(--solid-tint) !important;
+}
+:root[data-blur="off"] .header-icon-btn,
+:root[data-blur="off"] .back,
+:root[data-blur="off"] .live-badge,
+:root[data-blur="off"] .chip:not(.active){
+  background:var(--solid-panel-2) !important;
+}
+:root[data-blur="off"] #sd-bottom-nav{
+  background:linear-gradient(to top,var(--bg-base-1) 0%,var(--bg-base-1) 70%,transparent 100%) !important;
+}
+:root[data-blur="off"] .apply-fab{
+  box-shadow:none !important;
+}
 .screen-cpu .stage {max-width:480px;margin:0 auto;padding:20px;}
 .screen-cpu .back {background:rgba(255,255,255,.14);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.2);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
 .screen-cpu .section-title {font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);margin:22px 0 8px;font-weight:700;}
@@ -2340,7 +2425,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 
   <div class="section-title">Display</div>
   <div class="toggle-row">
-    <div><div class="toggle-title">Liquid glass blur</div><div class="toggle-desc">Turn off backdrop blur for a flatter, faster UI</div></div>
+    <div><div class="toggle-title">Liquid glass</div><div class="toggle-desc">On = frosted glass panels. Off = solid colors in the WebUI</div></div>
     <div class="switch on" id="settings-tog-blur" onclick="toggleBlur(this)"></div>
   </div>
 

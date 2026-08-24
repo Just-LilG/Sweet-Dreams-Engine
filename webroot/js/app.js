@@ -226,7 +226,7 @@ function setBlurEnabled(on) {
 function toggleBlur(el) {
   el.classList.toggle('on');
   setBlurEnabled(isOn(el));
-  toast(isOn(el) ? 'Liquid glass on' : 'Blur off');
+  toast(isOn(el) ? 'Liquid glass on' : 'Solid colors on');
 }
 window.toggleBlur = toggleBlur;
 

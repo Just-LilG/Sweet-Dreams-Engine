@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.1
+
+- WebUI “Liquid glass” toggle now switches to **solid panel colors** (not just removing blur). Off = opaque surfaces; On = frosted glass.
+
 ## v2.6.0
 
 First public **stable** release of the 2.x WebUI / cortex tree (replaces v1.9.2 as GitHub Latest).
@@ -40,7 +44,8 @@ Flash **over** the existing `sweet_dreams` module.
 
 ## GitHub
 
-- **v2.6.0** (latest) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.0/SweetDreams-v2_6_0.zip)
+- **v2.6.1** (latest) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.1/SweetDreams-v2_6_1.zip)
+- **v2.6.0** — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.0/SweetDreams-v2_6_0.zip)
 - **v2.5.43** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.43/SweetDreams-v2_5_43.zip)
 - **v2.5.42** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.42/SweetDreams-v2_5_42.zip)
 - **v2.5.41** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.41/SweetDreams-v2_5_41.zip)
