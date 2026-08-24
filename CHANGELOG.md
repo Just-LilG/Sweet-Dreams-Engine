@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.6.0
+
+First public **stable** release of the 2.x WebUI / cortex tree (replaces v1.9.2 as GitHub Latest).
+
+Includes everything from the v2.5.41–v2.5.43 pre-releases:
+
+- Settings persist under `/data/adb/sweet_dreams_persist`
+- Games: installed-only list, real icons, Launch / Force-stop
+- Thermal Lite / Advanced / Extreme with bind-mount spoof
+- Render scale (AZenith Game Mode + session wm size fallback)
+- CPU spoof (COPG-style `/proc/cpuinfo` bind)
+- Faster game detection and boost notification
+- Engine Live Readout fix; liquid-glass blur toggle; shared Home/Games/Logs nav; phone-back history fix
+
+Flash **over** the existing `sweet_dreams` module.
+
 ## v2.5.43
 
 - Faster game detection (1s loop + window focus) so the boost notification appears sooner.
@@ -24,6 +40,7 @@
 
 ## GitHub
 
+- **v2.6.0** (latest) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.0/SweetDreams-v2_6_0.zip)
 - **v2.5.43** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.43/SweetDreams-v2_5_43.zip)
 - **v2.5.42** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.42/SweetDreams-v2_5_42.zip)
 - **v2.5.41** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.41/SweetDreams-v2_5_41.zip)
