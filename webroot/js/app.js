@@ -180,7 +180,7 @@ window.setTheme = setTheme;
 window.sdPickChip = sdPickChip;
 window.sdPickMode = sdPickMode;
 
-const PRIMARY_TABS = new Set(['home', 'games', 'logs', 'info']);
+const PRIMARY_TABS = new Set(['home', 'games', 'logs']);
 
 function showPanel(key) {
   let target = document.getElementById('panel-' + key);
@@ -241,7 +241,7 @@ function toggleBlur(el) {
 window.toggleBlur = toggleBlur;
 
 function sdSyncBottomNav(key) {
-  const tabMap = { home: 0, games: 1, logs: 2, info: 3 };
+  const tabMap = { home: 0, games: 1, logs: 2 };
   if (!(key in tabMap)) return;
   document.querySelectorAll('#sd-bottom-nav .nav-item').forEach((el, i) => {
     el.classList.toggle('active', i === tabMap[key]);
