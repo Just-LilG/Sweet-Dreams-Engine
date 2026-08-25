@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.6.4
+
+- Solid (glass off) mode keeps Performance Profile accent colors instead of flattening them
+- Info moved to the top-right header next to Settings (removed from bottom nav)
+
 ## v2.6.3
 
 - WebUI polish pass: no blank first paint, Apply stays on primary tabs, safer panel fallback
