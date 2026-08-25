@@ -46,6 +46,8 @@ let _spoofPkg = '';
 let _gameProfilePkg = '';
 let _gamesAll = [];
 let _gamesSelected = new Set();
+let _gamesSearchTimer = null;
+let _gamesSearchToken = 0;
 let _dnsTimer;
 let _touchTimer;
 let _thermalSpoofTimer;
@@ -181,7 +183,11 @@ window.sdPickMode = sdPickMode;
 const PRIMARY_TABS = new Set(['home', 'games', 'logs', 'info']);
 
 function showPanel(key) {
-  const target = document.getElementById('panel-' + key);
+  let target = document.getElementById('panel-' + key);
+  if (!target) {
+    key = 'home';
+    target = document.getElementById('panel-home');
+  }
   document.querySelectorAll('.screen').forEach((s) => {
     s.style.display = '';
     s.classList.toggle('is-active', s === target);
@@ -195,7 +201,8 @@ function showPanel(key) {
   if (nav) nav.style.display = PRIMARY_TABS.has(key) ? '' : 'none';
   sdSyncBottomNav(key);
   const fab = document.getElementById('apply-fab');
-  if (fab) fab.style.display = key === 'home' ? '' : 'none';
+  // Keep Apply visible on all primary tabs so the bar doesn't jump.
+  if (fab) fab.style.display = PRIMARY_TABS.has(key) ? '' : 'none';
   loadPanel(key);
 }
 
@@ -339,6 +346,9 @@ async function refreshHome() {
     `cat "${CORTEX}/daemons/last_game.txt" 2>/dev/null`,
     `df -k /data 2>/dev/null | tail -1`,
     `wc -l < "${CORTEX}/games/selected.txt" 2>/dev/null`,
+    `sh "${CORTEX}/games/foreground_pkg.sh" 2>/dev/null`,
+    `ls "${CORTEX}/games/profiles" 2>/dev/null | grep -c '\\.txt$' || echo 0`,
+    `test -s "${CORTEX}/device/capabilities.txt" && echo probed || echo none`,
   ]);
 
   const model = rows[0] || 'Unknown device';
@@ -426,9 +436,11 @@ async function refreshHome() {
   if (pillP) pillP.textContent = 'Profile ' + (rows[5] || '—');
 
   const lastGame = rows[32];
+  const fgPkg = (rows[35] || '').trim();
   const banner = document.getElementById('home-game-status-banner');
   if (banner) {
-    if (lastGame) {
+    const live = lastGame && fgPkg && fgPkg === lastGame;
+    if (live) {
       banner.style.display = 'flex';
       txt('home-game-status-name', lastGame.split('.').pop() + ' running');
       txt('home-game-status-sub', 'Boost active · OOM shield on');
@@ -436,6 +448,16 @@ async function refreshHome() {
       banner.style.display = 'none';
     }
   }
+
+  const preloadCount = parseInt(rows[36], 10) || 0;
+  const preloadRow = document.getElementById('home-row-preload');
+  if (preloadRow) preloadRow.style.display = preloadCount > 0 ? '' : 'none';
+  txt('home-sub-preload', preloadCount > 0 ? `${preloadCount} profiles ready` : '—');
+
+  const compatProbed = rows[37] === 'probed';
+  const compatRow = document.getElementById('home-row-compat');
+  if (compatRow) compatRow.style.display = compatProbed ? '' : 'none';
+  txt('home-sub-compat', compatProbed ? 'Probed' : 'Checking…');
 
   refreshHealthBanner();
   refreshConflictBanner();
@@ -496,7 +518,10 @@ window.mod_home_setProfile = mod_home_setProfile;
 function togglePerf(el) {
   el.classList.toggle('on');
   const next = isOn(el) ? 'on' : 'off';
-  write(`${CORTEX}/perf/enabled.txt`, next);
+  write(`${CORTEX}/perf/enabled.txt`, next).then(() => {
+    if (next === 'on') se(`sh "${CORTEX}/perf/apply.sh" '' boost 2>/dev/null`);
+    else se(`sh "${CORTEX}/perf/apply.sh" '' restore 2>/dev/null`);
+  });
   txt('home-sub-perf', next === 'on' ? 'On — MTK scenario API' : 'Off', next === 'on' ? 'row-desc ok' : 'row-desc');
   toast('PerfService: ' + next);
 }
@@ -543,11 +568,16 @@ async function applyAll() {
     `sh "${CORTEX}/display/apply.sh"`,
     `sh "${CORTEX}/ram/apply.sh"`,
     `sh "${CORTEX}/battery/apply.sh"`,
+    `sh "${CORTEX}/audio/apply.sh"`,
+    `sh "${CORTEX}/sensor/apply.sh"`,
     `sh "${CORTEX}/games/build_spoof_json.sh"`,
     `sh "${CORTEX}/games/spoof.sh"`,
-  ].join(' ; '), '', 45000);
+    `sh "${CORTEX}/display/apply_selected.sh"`,
+  ].join(' ; '), '', 60000);
   const fps = await se(`cat "${CORTEX}/display/fps.txt"`, '90');
   await se(`sh "${CORTEX}/fps/engine.sh" "${fps}" 2>/dev/null`);
+  const anim = await se(`cat "${CORTEX}/display/anim_scale.txt"`, '0.5');
+  await se(`settings put global window_animation_scale ${anim}; settings put global transition_animation_scale ${anim}; settings put global animator_duration_scale ${anim}`);
   if (fab) fab.classList.remove('applying');
   toast('All tweaks applied');
   refreshHome();
@@ -820,6 +850,13 @@ function mod_battery_toggleBatt() {
   t.classList.toggle('on');
   const cfg = document.getElementById('battery-batt-config');
   if (cfg) cfg.classList.toggle('open', isOn(t));
+  const en = isOn(t) ? 'on' : 'off';
+  const chip = document.querySelector('#battery-pct-chips .chip.active');
+  const pct = chip?.dataset.pct || '80';
+  write(`${CORTEX}/battery/limit_enabled.txt`, en).then(() => {
+    write(`${CORTEX}/battery/limit_pct.txt`, pct).then(() => apply('battery/apply.sh'));
+  });
+  toast(en === 'on' ? `Charge limit ${pct}%` : 'Charge limit off');
 }
 window.mod_battery_toggleBatt = mod_battery_toggleBatt;
 
@@ -833,6 +870,9 @@ function mod_battery_setLimit(el) {
     '90': 'Closer to a full charge with only a small lifespan trade-off.',
   };
   txt('battery-pct-info', info[el.dataset.pct] || '');
+  if (isOn(document.getElementById('battery-tog-batt'))) {
+    write(`${CORTEX}/battery/limit_pct.txt`, el.dataset.pct).then(() => apply('battery/apply.sh'));
+  }
 }
 window.mod_battery_setLimit = mod_battery_setLimit;
 
@@ -875,6 +915,9 @@ const CC_INFO = {
 
 function toggleNet(el) {
   el.classList.toggle('on');
+  const on = isOn(el) ? 'on' : 'off';
+  write(`${CORTEX}/net/status.txt`, on).then(() => apply('net/apply.sh'));
+  toast('Network boost: ' + on);
 }
 window.toggleNet = toggleNet;
 
@@ -1705,23 +1748,29 @@ window.mod_games_setSpoofC = mod_games_setSpoofC;
 async function mod_games_filterPicker(query) {
   const resultsEl = document.getElementById('games-search-results');
   if (!resultsEl) return;
-  if (!query || query.length < 2) { resultsEl.innerHTML = ''; return; }
-  const raw = await se(`sh "${CORTEX}/games/list_apps.sh" search '${query.replace(/'/g, "")}'`, '');
-  const rows = raw.split(/\n/).map((line) => {
-    const i = line.indexOf('|');
-    if (i < 0) return null;
-    const pkg = line.slice(0, i);
-    const lab = line.slice(i + 1);
-    _gameLabels[pkg] = lab;
-    return pkg;
-  }).filter(Boolean).slice(0, 20);
-  resultsEl.innerHTML = rows.length
-    ? rows.map((pkg) => {
-        const on = _gamesSelected.has(pkg);
-        return `<div class="game-row">${gameAvatarHtml(pkg)}<div class="game-meta" style="flex:1;"><div class="game-name">${gameLabel(pkg)}</div><div style="font-size:10px;color:rgba(255,255,255,.45);">${pkg}</div></div><div class="switch${on ? ' on' : ''}" onclick="mod_games_toggle('${pkg}', this)"></div></div>`;
-      }).join('')
-    : '<div class="empty-state">No matching apps</div>';
-  fillGameIcons(rows);
+  const q = (query || '').trim();
+  if (q.length < 2) { resultsEl.innerHTML = ''; return; }
+  const token = ++_gamesSearchToken;
+  clearTimeout(_gamesSearchTimer);
+  _gamesSearchTimer = setTimeout(async () => {
+    const raw = await se(`sh "${CORTEX}/games/list_apps.sh" search '${q.replace(/'/g, "")}'`, '');
+    if (token !== _gamesSearchToken) return;
+    const rows = raw.split(/\n/).map((line) => {
+      const i = line.indexOf('|');
+      if (i < 0) return null;
+      const pkg = line.slice(0, i);
+      const lab = line.slice(i + 1);
+      _gameLabels[pkg] = lab;
+      return pkg;
+    }).filter(Boolean).slice(0, 20);
+    resultsEl.innerHTML = rows.length
+      ? rows.map((pkg) => {
+          const on = _gamesSelected.has(pkg);
+          return `<div class="game-row">${gameAvatarHtml(pkg)}<div class="game-meta" style="flex:1;"><div class="game-name">${gameLabel(pkg)}</div><div style="font-size:10px;color:rgba(255,255,255,.45);">${pkg}</div></div><div class="switch${on ? ' on' : ''}" onclick="mod_games_toggle('${pkg}', this)"></div></div>`;
+        }).join('')
+      : '<div class="empty-state">No matching apps</div>';
+    fillGameIcons(rows);
+  }, 280);
 }
 window.mod_games_filterPicker = mod_games_filterPicker;
 
@@ -1774,8 +1823,11 @@ async function mod_gameprofile_load() {
     shellNav('games', { replace: true });
     return;
   }
+  window._gameProfilePkg = pkg;
   txt('gameprofile-title', gameLabel(pkg));
   txt('gameprofile-pkg', pkg);
+  const iconHost = document.getElementById('gameprofile-icon');
+  if (iconHost) iconHost.innerHTML = gameAvatarHtml(pkg);
   fillGameIcons([pkg]);
   const [profRaw, spoofC, assigns, master, globalRes] = await batched([
     `cat "${gameProfilePath(pkg)}" 2>/dev/null`,
@@ -1788,14 +1840,13 @@ async function mod_gameprofile_load() {
   document.querySelectorAll('#gameprofile-profile-chips .chip').forEach((c) => {
     c.classList.toggle('active', c.dataset.profile === p.profile);
   });
-  const res = p.resolution === 'default' || p.resolution === 'inherit' ? (globalRes || 'native') : p.resolution;
-  document.querySelectorAll('#gameprofile-res-chips .chip').forEach((c) => {
-    c.classList.toggle('active', c.dataset.res === res || (c.dataset.res === 'default' && (p.resolution === 'default' || !p.resolution)));
-  });
-  // Prefer marking default chip when profile says default/inherit
   if (p.resolution === 'default' || p.resolution === 'inherit' || !p.resolution) {
     document.querySelectorAll('#gameprofile-res-chips .chip').forEach((c) => {
       c.classList.toggle('active', c.dataset.res === 'default');
+    });
+  } else {
+    document.querySelectorAll('#gameprofile-res-chips .chip').forEach((c) => {
+      c.classList.toggle('active', c.dataset.res === p.resolution);
     });
   }
   const spoofInput = document.getElementById('gameprofile-spoof-c');
@@ -1861,6 +1912,12 @@ function mod_gameprofile_openTouch() {
   shellNav('touch');
 }
 window.mod_gameprofile_openTouch = mod_gameprofile_openTouch;
+
+function mod_gameprofile_launch() {
+  if (!_gameProfilePkg) return;
+  mod_games_launch(_gameProfilePkg);
+}
+window.mod_gameprofile_launch = mod_gameprofile_launch;
 
 /* ── Info / About ── */
 async function mod_info_load() {
@@ -1932,8 +1989,13 @@ async function mod_logs_copy() {
 window.mod_logs_copy = mod_logs_copy;
 
 async function mod_logs_clear() {
-  await se(`: > "${MOD}/boot.log"`);
-  txt('logs-term', '(cleared)');
+  const src = document.querySelector('#logs-source-chips .chip.active')?.dataset.src || 'boot';
+  const file = src === 'session' ? `${CORTEX}/daemons/session.log`
+    : src === 'thermal' ? `${CORTEX}/thermal/last_verify.txt`
+    : `${MOD}/boot.log`;
+  await se(`: > "${file}"`);
+  txt('logs-term', `(${src} cleared)`);
+  toast('Log cleared');
 }
 window.mod_logs_clear = mod_logs_clear;
 
