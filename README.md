@@ -2,7 +2,7 @@
 
 MediaTek FPS unlocker and thermal bypass engine for KernelSU / Magisk.
 
-**Version:** v2.6.4  
+**Version:** v2.6.5  
 **Author:** Lil G Tech Labs
 
 ## Features

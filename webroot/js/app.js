@@ -181,6 +181,8 @@ window.sdPickChip = sdPickChip;
 window.sdPickMode = sdPickMode;
 
 const PRIMARY_TABS = new Set(['home', 'games', 'logs']);
+let _activePanelKey = '';
+let _loadPanelTimer = 0;
 
 function showPanel(key) {
   let target = document.getElementById('panel-' + key);
@@ -188,22 +190,35 @@ function showPanel(key) {
     key = 'home';
     target = document.getElementById('panel-home');
   }
+  const same = key === _activePanelKey && target.classList.contains('is-active');
+  _activePanelKey = key;
+
+  const isPrimary = PRIMARY_TABS.has(key);
   document.querySelectorAll('.screen').forEach((s) => {
     s.style.display = '';
-    s.classList.toggle('is-active', s === target);
+    const on = s === target;
+    s.classList.toggle('is-active', on);
+    s.classList.toggle('screen-push', on && !isPrimary);
   });
-  if (target) {
-    const scroller = document.getElementById('app-scroll');
-    if (scroller) scroller.scrollTop = 0;
+  if (target && !same) {
     target.scrollTop = 0;
   }
   const nav = document.getElementById('sd-bottom-nav');
-  if (nav) nav.style.display = PRIMARY_TABS.has(key) ? '' : 'none';
+  if (nav) nav.style.display = isPrimary ? '' : 'none';
   sdSyncBottomNav(key);
   const fab = document.getElementById('apply-fab');
-  // Keep Apply visible on all primary tabs so the bar doesn't jump.
-  if (fab) fab.style.display = PRIMARY_TABS.has(key) ? '' : 'none';
-  loadPanel(key);
+  if (fab) fab.style.display = isPrimary ? '' : 'none';
+
+  // Paint the tab switch first; load data on the next frame so root calls don't stutter the fade.
+  if (_loadPanelTimer) clearTimeout(_loadPanelTimer);
+  if (same) {
+    loadPanel(key);
+  } else {
+    _loadPanelTimer = setTimeout(() => {
+      _loadPanelTimer = 0;
+      loadPanel(key);
+    }, 16);
+  }
 }
 
 function shellNav(key, opts = {}) {
