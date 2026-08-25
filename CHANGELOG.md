@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.6.5
+
+- Tab switches: fast crossfade only (no slide) so Home/Games/Logs feel like in-app tabs, not new windows
+- Deferred panel data load so root calls don’t stutter the fade; lighter profile + toast motion
+
 ## v2.6.4
 
 - Solid (glass off) mode keeps Performance Profile accent colors instead of flattening them
