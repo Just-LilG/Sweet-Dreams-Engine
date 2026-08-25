@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.6.3
+
+- WebUI polish pass: no blank first paint, Apply stays on primary tabs, safer panel fallback
+- Home: live boost banner only when that game is foreground; compat/preload rows fill correctly
+- Games: debounced search; per-game profile shows icon; Launch no longer throws
+- Battery/Network toggles save immediately; PerfService toggle actually applies; Logs Clear respects source
+- Solid (non-glass) mode covers Info / game profile cards; safe-area padding on primary tabs
+
 ## v2.6.2
 
 - Tab transitions when switching Home / Games / Logs / Info
