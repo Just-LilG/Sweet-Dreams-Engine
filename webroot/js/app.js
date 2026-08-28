@@ -1,4 +1,4 @@
-/* Sweet Dreams WebUI — lavender/vanilla shell wired to cortex.
+/* Sweet Dreams WebUI — lavender/vanilla/blush shell wired to cortex.
    Completes sweet-dreams-app-3.html against v2.5.39-skipmount. */
 
 const MOD = '/data/adb/modules/sweet_dreams';

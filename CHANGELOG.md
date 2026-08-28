@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.6
+
+- New **Blush** theme (#F2C4CE): soft rose glass palette with matching solid-mode panels and balanced-profile accent
+
 ## v2.6.5
 
 - Tab switches: fast crossfade only (no slide) so Home/Games/Logs feel like in-app tabs, not new windows
@@ -71,7 +75,9 @@ Flash **over** the existing `sweet_dreams` module.
 
 ## GitHub
 
-- **v2.6.1** (latest) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.1/SweetDreams-v2_6_1.zip)
+- **v2.6.6** (latest) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.6/SweetDreams-v2_6_6.zip)
+- **v2.6.5** — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.5/SweetDreams-v2_6_5.zip)
+- **v2.6.1** — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.1/SweetDreams-v2_6_1.zip)
 - **v2.6.0** — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.6.0/SweetDreams-v2_6_0.zip)
 - **v2.5.43** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.43/SweetDreams-v2_5_43.zip)
 - **v2.5.42** (pre-release) — [download zip](https://github.com/Just-LilG/Sweet-Dreams-Engine/releases/download/v2.5.42/SweetDreams-v2_5_42.zip)
